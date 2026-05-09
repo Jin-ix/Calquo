@@ -1,0 +1,22 @@
+               <Button 
+                  type="button"
+                  onClick={() => {
+                     if (!user) {
+                       toast.error('Please login to send purchase request');
+                       return;
+                     }
+
+                     if (totalSelectedQty === 0) {
+                       toast.error('Please select at least one item');
+                       return;
+                     }
+
+                     // Close current dialog and open checkout dialog immediately
+                     setShowPurchaseDialog(false);
+                     setCheckoutPhase('checkout');
+                  }}
+                  className="bg-blue-600 hover:bg-blue-700 text-white"
+               >
+                  <CreditCard className="h-4 w-4 mr-2" />
+                  Choose Payment Method
+               </Button>

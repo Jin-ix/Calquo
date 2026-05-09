@@ -1,0 +1,14 @@
+Please note I realized the layout is still showing the old structure. The fast_apply didn't work correctly to replace it. We need to completely replace lines 311-319 (the "Product Description" header and content) with the toggle view.
+
+Current lines 311-319:
+              {/* Product Description */}
+              <div className="p-6 border-t border-gray-100 bg-white">
+                <h3 className="font-semibold text-gray-900 mb-2 flex items-center gap-2">
+                  <Info className="h-4 w-4 text-blue-500" /> Description
+                </h3>
+                <p className="text-gray-600 leading-relaxed text-sm">
+                  {product.description || 'No detailed description available for this product.'}
+                </p>
+              </div>
+
+Should become the toggle view with tabs for Description and Supplier.

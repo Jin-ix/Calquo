@@ -1,0 +1,31 @@
+Line 1056-1059 section to add MOQ check
+
+OLD:
+                      }
+
+                      // Prepare request data for checkout
+                      const items = Object.entries(selections).map(([key, qty]) => {
+
+NEW:
+                      }
+                      
+                      // Check if product is sold in sets for MOQ validation
+                      const isSetMode = (product as any).itemSetType === 'set_of_pattern' 
+                                     || (product as any).bulkSellingMode === 'bulksets'
+                                     || (product as any).unitOfMeasure === 'SET'
+                                     || (product as any).unitMode === 'bulk';
+                      
+                      let effectiveQty = totalSelectedQty;
+                      if (isSetMode && isEnhancedStock(product)) {
+                        const sizesCount = product.sizes?.length || 1;
+                        effectiveQty = Math.floor(totalSelectedQty / sizesCount);
+                      }
+                      
+                      if (effectiveQty < minOrderQty) {
+                        const unit = isSetMode ? (minOrderQty === 1 ? 'set' : 'sets') : (minOrderQty === 1 ? 'unit' : 'units');
+                        toast.error(`Minimum order quantity is ${minOrderQty} ${unit}. You have selected ${effectiveQty} ${isSetMode ? (effectiveQty === 1 ? 'set' : 'sets') : (effectiveQty === 1 ? 'unit' : 'units')}.`);
+                        return;
+                      }
+
+                      // Prepare request data for checkout
+                      const items = Object.entries(selections).map(([key, qty]) => {

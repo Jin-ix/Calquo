@@ -1,0 +1,18 @@
+MANUAL EDIT REQUIRED
+====================
+
+File: /components/stock/ModernBuyerFocusedProductDetail.tsx
+
+Lines 1252-1253:
+
+CHANGE FROM:
+                   <Send className="h-4 w-4 mr-2" />
+                   Send Purchase Request
+
+CHANGE TO:
+                   <CreditCard className="h-4 w-4 mr-2" />
+                   Select Payment Method
+
+NOTE: CreditCard icon is already imported at line 6, so no import changes needed.
+
+This is the button inside the Order Summary Dialog that should open the multi-step checkout flow.

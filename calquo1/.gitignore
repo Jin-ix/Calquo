@@ -1,0 +1,13 @@
+node_modules/
+dist/
+build/
+.env
+.env.local
+.env.*.local
+*.log
+error.log
+compile_errors.txt
+ts_errors.txt
+tsc-errors.txt
+.DS_Store
+Thumbs.db

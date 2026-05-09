@@ -1,0 +1,70 @@
+==================================================================
+MOQ VALIDATION FIX - EXACT CODE TO ADD
+==================================================================
+
+FILE: /components/stock/ModernBuyerFocusedProductDetail.tsx
+
+==================================================================
+CHANGE #1: Add MOQ validation in onClick handler
+==================================================================
+
+LOCATION: Around line 1080-1082
+FIND THIS:
+                      if (totalSelectedQty === 0) {
+                        toast.error('Please select at least one item');
+                        return;
+                      }
+
+                      // Prepare request data for checkout
+
+INSERT BETWEEN THEM:
+                      
+                      // Validate MOQ before proceeding
+                      const moqCheck = validateMOQ();
+                      if (!moqCheck.valid) {
+                        toast.error(moqCheck.message);
+                        return;
+                      }
+
+RESULT SHOULD BE:
+                      if (totalSelectedQty === 0) {
+                        toast.error('Please select at least one item');
+                        return;
+                      }
+                      
+                      // Validate MOQ before proceeding
+                      const moqCheck = validateMOQ();
+                      if (!moqCheck.valid) {
+                        toast.error(moqCheck.message);
+                        return;
+                      }
+
+                      // Prepare request data for checkout
+
+==================================================================
+CHANGE #2: Add disabled prop to "Proceed to Checkout" Button
+==================================================================
+
+LOCATION: Around line 1135
+FIND THIS:
+                   }}
+                   className="bg-blue-600 hover:bg-blue-700 text-white"
+                >
+
+CHANGE TO:
+                   }}
+                   disabled={totalSelectedQty === 0 || !validateMOQ().valid}
+                   className="bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+
+==================================================================
+VERIFICATION
+==================================================================
+
+After making changes, the button should:
+✓ Be disabled (grayed out) when MOQ is not met
+✓ Show error toast if somehow clicked when disabled
+✓ Enable when MOQ requirements are satisfied
+✓ Work for both "pieces" and "bulksets" selling modes
+
+==================================================================
