@@ -44,7 +44,7 @@ import { FirebaseConfigChecker } from '../admin/FirebaseConfigChecker';
 import { DatabaseCleanup } from '../admin/DatabaseCleanup';
 import { SystemHealthSummary } from '../admin/SystemHealthSummary';
 import { DatabaseSetupChecker } from '../admin/DatabaseSetupChecker';
-import { listenToCollection } from '../../utils/firebase/firestore';
+import { supabase } from '../../utils/supabase/client';
 
 interface AdminDashboardProps {
   orders?: OrderRequest[];
@@ -130,45 +130,59 @@ export function AdminDashboard({
   const effectiveLogisticsAgents = logisticsAgents.length > 0 ? logisticsAgents : combinedLogisticsAgents;
   const effectiveCities = cities.length > 0 ? cities : citiesState;
 
-  // Real-time data listeners
+  // Supabase data fetch
   useEffect(() => {
     if (user?.role !== 'admin' && user?.role !== 'super-admin') return;
 
-    // 1. Listen to Logistics Agents
-    const unsubAgents = listenToCollection('logistics_agents', [], (data) => {
-      setLogisticsAgentsState(data as LogisticsAgent[]);
-    });
+    const fetchAdminData = async () => {
+      // 1. Fetch Companies (Users)
+      const { data: companiesData } = await supabase
+        .from('companies')
+        .select('*')
+        .order('created_at', { ascending: false });
 
-    // 2. Listen to Delivery Cities
-    const unsubCities = listenToCollection('delivery_cities', [], (data) => {
-      setCitiesState(data as DeliveryCity[]);
-    });
+      if (companiesData) {
+        const mappedUsers = companiesData.map(doc => ({
+          id: doc.id,
+          business_role: doc.business_role || 'retailer',
+          company_name: doc.company_name || 'Unknown Company',
+          owner_name: doc.owner_name || 'Unknown Owner',
+          email: doc.email || '',
+          mobile: doc.mobile || '',
+          gst_number: doc.gst_number || '',
+          address: doc.address || '',
+          pin: doc.pin || '',
+          city: doc.city || '',
+          state: doc.state || '',
+          status: doc.status || (doc.is_verified ? 'active' : 'pending'),
+          is_verified: doc.is_verified,
+          joining_fee_paid: doc.joining_fee_paid,
+          createdAt: doc.created_at,
+          updatedAt: doc.updated_at,
+          last_login: doc.last_login,
+        })) as CompanyUser[];
+        setUsers(mappedUsers);
+        onUserUpdate?.(mappedUsers);
+      }
 
-    // 3. Listen to Companies (Users)
-    // This ensures we have the user count for the dashboard overview
-    const unsubUsers = listenToCollection('companies', [], (data) => {
-      const mappedUsers = data.map(doc => ({
-        id: doc.id,
-        ...doc,
-        // Ensure essential fields exist
-        business_role: doc.role || doc.business_role || 'retailer',
-        company_name: doc.company_name || 'Unknown Company',
-        owner_name: doc.owner_name || 'Unknown Owner',
-        email: doc.email || '',
-        mobile: doc.mobile || doc.mobile_number || '',
-        gst_number: doc.gst_number || doc.id,
-        status: doc.status || (doc.is_verified ? 'active' : 'pending')
-      })) as CompanyUser[];
-      
-      setUsers(mappedUsers);
-      onUserUpdate?.(mappedUsers);
-    });
+      // 2. Fetch Logistics Agents (if table exists)
+      const { data: agentsData } = await supabase
+        .from('logistics_agents')
+        .select('*');
+      if (agentsData) setLogisticsAgentsState(agentsData as LogisticsAgent[]);
 
-    return () => {
-      unsubAgents();
-      unsubCities();
-      unsubUsers();
+      // 3. Fetch Delivery Cities (if table exists)
+      const { data: citiesData } = await supabase
+        .from('delivery_cities')
+        .select('*');
+      if (citiesData) setCitiesState(citiesData as DeliveryCity[]);
     };
+
+    fetchAdminData();
+
+    // Poll every 30s for updates
+    const interval = setInterval(fetchAdminData, 30000);
+    return () => clearInterval(interval);
   }, [user, onUserUpdate]);
 
   // Handlers using Context if props not provided

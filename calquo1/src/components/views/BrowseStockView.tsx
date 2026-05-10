@@ -1,16 +1,15 @@
 /**
- * BrowseStockView - Global Stock Discovery with Firebase Real-time Sync
- * 
+ * BrowseStockView - Global Stock Discovery with Preference-Based Filtering
+ *
  * Features:
- * - Real-time Firebase onSnapshot listener for all active stock items
- * - Client-side debounced search and filtering
- * - Pagination with Firestore cursors
- * - Responsive grid layout with empty states
- * - No user-specific filtering - shows all public stock
+ * - Reads user preferences set during registration (categories, dress type, location)
+ * - Pre-applies preference filters on first load (can be dismissed)
+ * - Client-side debounced search and additional manual filtering
+ * - Responsive grid/list layout
  */
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Search, Filter, Grid, List, SortAsc, SortDesc, Package, RefreshCw } from 'lucide-react';
+import { Search, Filter, Grid, List, RefreshCw, Package, Sparkles, X } from 'lucide-react';
 import { Card, CardContent } from '../ui/card';
 import { Input } from '../ui/input';
 import { Button } from '../ui/button';
@@ -18,6 +17,7 @@ import { Badge } from '../ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { toast } from 'sonner';
 import { useStock } from '../context/StockContext';
+import { useAuth } from '../auth/AuthProvider';
 
 interface BrowseStockViewProps {
   onViewDetails?: (stock: any) => void;
@@ -25,16 +25,20 @@ interface BrowseStockViewProps {
 }
 
 export function BrowseStockView({ onViewDetails, onAddToCart }: BrowseStockViewProps) {
-  // Use stock data from StockProvider instead of separate Firebase listener
   const { allStock, isLoading, error, refreshStock } = useStock();
-  
-  // Filter and search state
+  const { user } = useAuth();
+
+  // Read preferences from logged-in user
+  const userPrefs = user?.profile?.preferences;
+
+  // Filter and search state — pre-populate from preferences
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedSupplier, setSelectedSupplier] = useState<string>('all');
-  const [sortBy, setSortBy] = useState<'name' | 'price' | 'recent' | 'supplier'>('recent');
+  const [sortBy, setSortBy] = useState<'name' | 'price' | 'recent' | 'supplier' | 'preference'>('preference');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [prefFiltersActive, setPrefFiltersActive] = useState(true);
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -52,19 +56,43 @@ export function BrowseStockView({ onViewDetails, onAddToCart }: BrowseStockViewP
   const { categories, suppliers } = useMemo(() => {
     const cats = new Set<string>();
     const sups = new Set<string>();
-
     allStock.forEach(stock => {
       if (stock.category) cats.add(stock.category);
       if (stock.supplier || stock.seller_company) sups.add(stock.supplier || stock.seller_company);
     });
-
     return {
       categories: Array.from(cats).sort(),
       suppliers: Array.from(sups).sort()
     };
   }, [allStock]);
 
-  // Client-side filtering and sorting
+  // ── Preference matching score helper ─────────────────────────────────────
+  const getPreferenceScore = (stock: any): number => {
+    if (!userPrefs || !prefFiltersActive) return 0;
+    let score = 0;
+    const prefCats: string[] = userPrefs.preferredCategories || [];
+    const prefDress = (userPrefs.preferredDressType || '').toLowerCase();
+    const prefCity  = (userPrefs.preferredSellerLocation || '').toLowerCase();
+    const prefLoc   = userPrefs.preferredLocation || 'all';
+
+    // Category match
+    if (prefCats.length > 0 && prefCats.some(c => c.toLowerCase() === (stock.category || '').toLowerCase())) {
+      score += 3;
+    }
+    // Dress type keyword match
+    if (prefDress) {
+      const haystack = `${stock.name} ${stock.category} ${stock.fabricType || ''}`.toLowerCase();
+      if (haystack.includes(prefDress)) score += 2;
+    }
+    // City match
+    if (prefLoc === 'local_city' && prefCity) {
+      const stockCity = (stock.supplier_city || stock.city || '').toLowerCase();
+      if (stockCity === prefCity) score += 3;
+    }
+    return score;
+  };
+
+  // ── Client-side filtering and sorting ────────────────────────────────────
   const filteredAndSortedStock = useMemo(() => {
     let filtered = [...allStock];
 
@@ -72,58 +100,65 @@ export function BrowseStockView({ onViewDetails, onAddToCart }: BrowseStockViewP
     if (debouncedSearch) {
       const query = debouncedSearch.toLowerCase();
       filtered = filtered.filter(stock => {
-        const name = (stock.name || '').toLowerCase();
-        const category = (stock.category || '').toLowerCase();
-        const supplier = (stock.supplier || stock.seller_company || '').toLowerCase();
+        const name        = (stock.name || '').toLowerCase();
+        const category    = (stock.category || '').toLowerCase();
+        const supplier    = (stock.supplier || stock.seller_company || '').toLowerCase();
         const description = (stock.description || '').toLowerCase();
-        
-        return name.includes(query) || 
-               category.includes(query) || 
-               supplier.includes(query) || 
-               description.includes(query);
+        return name.includes(query) || category.includes(query) || supplier.includes(query) || description.includes(query);
       });
     }
 
-    // Category filter
+    // Preference-based category filter (soft — shows preferred first, doesn't hide others)
+    // Only hard-filter if the user chose a specific category manually
     if (selectedCategory !== 'all') {
       filtered = filtered.filter(stock => stock.category === selectedCategory);
+    } else if (prefFiltersActive && userPrefs?.preferredCategories?.length) {
+      // Soft: still show all, but scored
     }
 
     // Supplier filter
     if (selectedSupplier !== 'all') {
-      filtered = filtered.filter(stock => 
-        (stock.supplier === selectedSupplier) || 
-        (stock.seller_company === selectedSupplier)
+      filtered = filtered.filter(stock =>
+        (stock.supplier === selectedSupplier) || (stock.seller_company === selectedSupplier)
       );
     }
 
-    // Sorting
+    // Sort
     filtered.sort((a, b) => {
       switch (sortBy) {
+        case 'preference':
+          return getPreferenceScore(b) - getPreferenceScore(a);
         case 'name':
           return (a.name || '').localeCompare(b.name || '');
         case 'price':
           return (a.price || 0) - (b.price || 0);
         case 'supplier':
-          return (a.supplier || a.seller_company || '').localeCompare(
-            b.supplier || b.seller_company || ''
-          );
+          return (a.supplier || a.seller_company || '').localeCompare(b.supplier || b.seller_company || '');
         case 'recent':
         default:
-          // Already sorted by createdAt from Firebase
           return 0;
       }
     });
 
     return filtered;
-  }, [allStock, debouncedSearch, selectedCategory, selectedSupplier, sortBy]);
+  }, [allStock, debouncedSearch, selectedCategory, selectedSupplier, sortBy, prefFiltersActive, userPrefs]);
+
+  const hasPreferences = !!(
+    userPrefs &&
+    (
+      (userPrefs.preferredCategories && userPrefs.preferredCategories.length > 0) ||
+      userPrefs.preferredDressType ||
+      userPrefs.preferredSellerLocation
+    )
+  );
 
   // Handle refresh
   const handleRefresh = () => {
-    setIsLoading(true);
     toast.success('Refreshing stock data...');
     refreshStock();
   };
+
+
 
   // Loading state
   if (isLoading && allStock.length === 0) {
@@ -180,7 +215,15 @@ export function BrowseStockView({ onViewDetails, onAddToCart }: BrowseStockViewP
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Browse Stock</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-3xl font-bold">Browse Stock</h1>
+            {hasPreferences && prefFiltersActive && (
+              <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 gap-1 animate-pulse">
+                <Sparkles className="h-3 w-3" />
+                Personalized
+              </Badge>
+            )}
+          </div>
           <p className="text-sm text-muted-foreground">
             {filteredAndSortedStock.length} items available
             {isLoading && ' • Syncing...'}
@@ -242,6 +285,14 @@ export function BrowseStockView({ onViewDetails, onAddToCart }: BrowseStockViewP
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
+              {hasPreferences && (
+                <SelectItem value="preference">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="h-3 w-3 text-amber-500" />
+                    Personalized for You
+                  </div>
+                </SelectItem>
+              )}
               <SelectItem value="recent">Recently Added</SelectItem>
               <SelectItem value="name">Name A-Z</SelectItem>
               <SelectItem value="price">Price</SelectItem>
@@ -272,9 +323,26 @@ export function BrowseStockView({ onViewDetails, onAddToCart }: BrowseStockViewP
       </div>
 
       {/* Active Filters Summary */}
-      {(debouncedSearch || selectedCategory !== 'all' || selectedSupplier !== 'all') && (
+      {(debouncedSearch || selectedCategory !== 'all' || selectedSupplier !== 'all' || (hasPreferences && prefFiltersActive)) && (
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-sm text-muted-foreground">Active filters:</span>
+          
+          {hasPreferences && prefFiltersActive && (
+            <Badge variant="secondary" className="bg-amber-100 text-amber-900 border-amber-200 hover:bg-amber-200 transition-colors">
+              <Sparkles className="h-3 w-3 mr-1 text-amber-600" />
+              Smart Recommendations
+              <button
+                onClick={() => {
+                  setPrefFiltersActive(false);
+                  if (sortBy === 'preference') setSortBy('recent');
+                }}
+                className="ml-2 text-xs hover:text-destructive"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </Badge>
+          )}
+
           {debouncedSearch && (
             <Badge variant="secondary">
               Search: "{debouncedSearch}"
@@ -282,7 +350,7 @@ export function BrowseStockView({ onViewDetails, onAddToCart }: BrowseStockViewP
                 onClick={() => setSearchQuery('')}
                 className="ml-2 text-xs hover:text-destructive"
               >
-                ×
+                <X className="h-3 w-3" />
               </button>
             </Badge>
           )}
@@ -293,7 +361,7 @@ export function BrowseStockView({ onViewDetails, onAddToCart }: BrowseStockViewP
                 onClick={() => setSelectedCategory('all')}
                 className="ml-2 text-xs hover:text-destructive"
               >
-                ×
+                <X className="h-3 w-3" />
               </button>
             </Badge>
           )}
@@ -304,7 +372,7 @@ export function BrowseStockView({ onViewDetails, onAddToCart }: BrowseStockViewP
                 onClick={() => setSelectedSupplier('all')}
                 className="ml-2 text-xs hover:text-destructive"
               >
-                ×
+                <X className="h-3 w-3" />
               </button>
             </Badge>
           )}
@@ -315,6 +383,8 @@ export function BrowseStockView({ onViewDetails, onAddToCart }: BrowseStockViewP
               setSearchQuery('');
               setSelectedCategory('all');
               setSelectedSupplier('all');
+              setPrefFiltersActive(false);
+              if (sortBy === 'preference') setSortBy('recent');
             }}
             className="text-xs h-7"
           >

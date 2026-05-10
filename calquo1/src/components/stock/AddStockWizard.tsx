@@ -1403,46 +1403,53 @@ export function AddStockWizard({ onSubmit, onCancel, navigation, isEditing = fal
             </AnimatePresence>
           </div>
 
-          {/* ─── Inline Step Navigation ─────────────────────────────────────── */}
+          {/* ─── Sticky Step Navigation Bar ─────────────────────────────── */}
           <div className="sticky bottom-0 z-30 mt-6 pb-4">
-            <div className="bg-white/90 backdrop-blur-xl border border-slate-200/80 rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.08)] p-3 flex items-center justify-between gap-3">
-              {/* Step dots */}
-              <div className="flex items-center gap-1.5 pl-2 shrink-0">
-                {STEPS.map((step) => (
-                  <div
-                    key={step.number}
-                    className={`rounded-full transition-all duration-300 ${
-                      step.number === currentStep
-                        ? 'w-6 h-2 bg-[#FF8C42]'
-                        : step.number < currentStep
-                        ? 'w-2 h-2 bg-slate-400'
-                        : 'w-2 h-2 bg-slate-200'
-                    }`}
-                  />
-                ))}
-              </div>
-
-              {/* Step label */}
-              <span className="text-xs font-semibold text-slate-500 hidden sm:block flex-1 text-center">
-                Step {currentStep} of {STEPS.length} — {STEPS[currentStep - 1]?.short}
-              </span>
-
-              {/* Buttons */}
-              <div className="flex items-center gap-2">
-                {currentStep > 1 && (
+            <div className="bg-white border-t border-slate-200 shadow-[0_-4px_20px_rgba(0,0,0,0.06)] rounded-2xl px-4 py-3 flex items-center justify-between gap-4">
+              
+              {/* Left: Back button */}
+              <div className="w-28 flex justify-start">
+                {currentStep > 1 ? (
                   <Button
                     variant="ghost"
                     onClick={handleBack}
-                    className="h-11 px-4 rounded-xl text-slate-600 hover:text-black hover:bg-slate-100 font-semibold text-sm"
+                    className="h-11 px-5 rounded-xl text-slate-600 hover:text-black hover:bg-slate-100 font-semibold text-sm gap-1"
                   >
-                    <ChevronLeft className="h-4 w-4 mr-1" />
+                    <ChevronLeft className="h-4 w-4" />
                     Back
                   </Button>
+                ) : (
+                  <div />
                 )}
+              </div>
+
+              {/* Center: Step indicator */}
+              <div className="flex flex-col items-center gap-1.5 flex-1">
+                <div className="flex items-center gap-1.5">
+                  {STEPS.map((step) => (
+                    <div
+                      key={step.number}
+                      className={`rounded-full transition-all duration-300 ${
+                        step.number === currentStep
+                          ? 'w-6 h-2 bg-[#FF8C42]'
+                          : step.number < currentStep
+                          ? 'w-2 h-2 bg-slate-400'
+                          : 'w-2 h-2 bg-slate-200'
+                      }`}
+                    />
+                  ))}
+                </div>
+                <span className="text-[11px] font-semibold text-slate-400 tracking-wide uppercase hidden sm:block">
+                  Step {currentStep} of {STEPS.length} — {STEPS[currentStep - 1]?.short}
+                </span>
+              </div>
+
+              {/* Right: Continue / Publish button */}
+              <div className="w-28 flex justify-end">
                 <Button
                   onClick={currentStep === 6 ? handleSubmitClick : handleNext}
                   disabled={!canProceed() || isSubmitting}
-                  className={`h-11 px-8 rounded-xl font-black text-xs tracking-[0.15em] uppercase transition-all shadow-md relative overflow-hidden group
+                  className={`h-11 px-6 rounded-xl font-bold text-sm tracking-wide transition-all shadow-md relative overflow-hidden group
                     ${currentStep === 6
                       ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-200'
                       : 'bg-slate-900 hover:bg-black text-white'}
@@ -1450,23 +1457,24 @@ export function AddStockWizard({ onSubmit, onCancel, navigation, isEditing = fal
                   `}
                 >
                   <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:animate-[shimmer_1.5s_infinite]" />
-                  <span className="relative z-10 flex items-center gap-2">
+                  <span className="relative z-10 flex items-center gap-1.5">
                     {isSubmitting ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
                     ) : currentStep === 6 ? (
                       <>
                         <Check className="h-4 w-4" />
-                        Publish Now
+                        Publish
                       </>
                     ) : (
                       <>
-                        Continue
+                        Next
                         <ChevronRight className="h-4 w-4" />
                       </>
                     )}
                   </span>
                 </Button>
               </div>
+
             </div>
           </div>
 

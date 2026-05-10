@@ -239,9 +239,9 @@ export const registrationAPI = {
    * Admin: register a company manually
    */
   registerCompany: async (companyData: any) => {
-    const { error } = await supabase.from('companies').insert([companyData]);
+    const { data, error } = await supabase.from('companies').insert([companyData]).select();
     if (error) throw new Error(error.message);
-    return { success: true };
+    return { success: true, company: data[0] };
   },
 
   /**

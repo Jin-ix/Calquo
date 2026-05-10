@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -34,7 +34,7 @@ import {
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { firebaseDb } from '../../utils/firebase/config';
 
-/* ─── Fashion-themed global styles injected once ──────────────────────────── */
+/* â”€â”€â”€ Fashion-themed global styles injected once â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 const FASHION_STYLE = `
   @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400&family=Inter:wght@300;400;500;600;700&display=swap');
   .reg-playfair { font-family: 'Playfair Display', serif; }
@@ -549,7 +549,7 @@ export function EnhancedRegisterForm({ onBackToLogin }: EnhancedRegisterFormProp
             <div><button className="btn-back-light" onClick={onBackToLogin}><ArrowLeft className="h-3 w-3" />Back to Login</button></div>
             <div className="flex-1 flex flex-col justify-end pb-10">
               <div className="gold-line mb-6" />
-              <p className="text-xs tracking-[0.35em] uppercase mb-5" style={{ color: '#d4a843' }}>Est. 2024 � India's B2B Fashion Network</p>
+              <p className="text-xs tracking-[0.35em] uppercase mb-5" style={{ color: '#d4a843' }}>Est. 2024 · India's B2B Fashion Network</p>
               <h1 className="reg-playfair text-white leading-none mb-2" style={{ fontSize: 'clamp(2.8rem,4.5vw,4.5rem)', fontWeight: 900 }}>Join the</h1>
               <h1 className="reg-playfair leading-none mb-2" style={{ fontSize: 'clamp(2.8rem,4.5vw,4.5rem)', fontWeight: 900, WebkitTextStroke: '1.5px #d4a843', color: 'transparent' }}>CALIQUO</h1>
               <h1 className="reg-playfair leading-none mb-8" style={{ fontSize: 'clamp(2.8rem,4.5vw,4.5rem)', fontWeight: 900, color: 'rgba(255,255,255,0.6)' }}>Network</h1>
@@ -566,18 +566,34 @@ export function EnhancedRegisterForm({ onBackToLogin }: EnhancedRegisterFormProp
             </div>
             <div className="flex items-center gap-2">
               <Shield className="h-3.5 w-3.5" style={{ color: '#d4a843' }} />
-              <span style={{ fontSize: '0.58rem', letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.28)' }}>Verified B2B Network � Secure Registration</span>
+              <span style={{ fontSize: '0.58rem', letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.28)' }}>Verified B2B Network · Secure Registration</span>
             </div>
           </div>
         </div>
 
         {/* RIGHT PANEL */}
-        <div className="w-full lg:w-7/12 flex flex-col" style={{ background: '#faf8f2', minHeight: '100vh' }}>
-          <div className="lg:hidden flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: '#e5d8bc', background: '#fffef9' }}>
-            <button className="btn-back-dark" onClick={onBackToLogin}><ArrowLeft className="h-3 w-3" />Back to Login</button>
-            <span className="reg-playfair font-bold" style={{ color: '#1a1200', fontSize: '1.1rem' }}>CALIQUO</span>
+        <div className="w-full lg:w-7/12 flex flex-col relative" style={{ 
+          background: 'url(/bg-registration.png) center/cover fixed', 
+          backgroundColor: '#faf8f2',
+          minHeight: '100vh' 
+        }}>
+          {/* Overlay to keep form legible */}
+          <div className="absolute inset-0 z-0 pointer-events-none" style={{ backgroundColor: 'rgba(250, 248, 242, 0.88)' }} />
+          
+          <div className="sticky top-0 z-50 w-full flex justify-between items-center px-5 py-4" style={{ background: 'rgba(250, 248, 242, 0.6)', backdropFilter: 'blur(8px)', borderBottom: '1px solid rgba(229, 216, 188, 0.5)' }}>
+            <button 
+              type="button"
+              onClick={onBackToLogin}
+              className="flex items-center gap-2 bg-white/90 px-4 py-2 rounded-full shadow-sm hover:bg-white hover:shadow-md transition-all border border-[#e5d8bc]"
+              style={{ color: '#1a1200', fontFamily: 'Inter, sans-serif', fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.1em', cursor: 'pointer' }}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#b8860b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+              Back to Login
+            </button>
+            <span className="lg:hidden reg-playfair font-bold" style={{ color: '#1a1200', fontSize: '1.1rem' }}>CALIQUO</span>
           </div>
-          <div className="flex-1 overflow-y-auto" style={{ padding: '2.5rem 2rem 6rem' }}>
+
+          <div className="relative z-10 flex-1 overflow-y-auto" style={{ padding: '2.5rem 2rem 6rem' }}>
             <div style={{ maxWidth: '560px', margin: '0 auto' }}>
               <div className="hidden lg:flex items-center justify-between mb-10">
                 <button className="btn-back-dark" onClick={onBackToLogin}><ArrowLeft className="h-3 w-3" />Back to Login</button>
@@ -653,7 +669,7 @@ export function EnhancedRegisterForm({ onBackToLogin }: EnhancedRegisterFormProp
                           </div>
                           <div style={{ display: 'flex', gap: '0.6rem' }}>
                             <Input id="gstNumber" value={formData.gst_number} onChange={(e) => handleChange('gst_number', e.target.value.toUpperCase())} placeholder="27AAECA1234E1ZM" className="field-input" style={{ fontFamily: 'monospace', letterSpacing: '0.08em', textTransform: 'uppercase' }} disabled={gstVerified} maxLength={15} />
-                            {!gstVerified && <button type="button" onClick={handleVerifyGst} disabled={verifyingGst || !formData.gst_number} className="btn-verify">{verifyingGst ? 'Verifying�' : 'Verify GST'}</button>}
+                            {!gstVerified && <button type="button" onClick={handleVerifyGst} disabled={verifyingGst || !formData.gst_number} className="btn-verify">{verifyingGst ? 'Verifying…' : 'Verify GST'}</button>}
                           </div>
                           {errors.gst_number && <p style={{ color: '#dc2626', fontSize: '0.7rem', marginTop: '0.2rem' }}>{errors.gst_number}</p>}
                         </div>
@@ -680,7 +696,7 @@ export function EnhancedRegisterForm({ onBackToLogin }: EnhancedRegisterFormProp
                               {mobileVerified && <span className="verified-pill"><CheckCircle2 className="h-2.5 w-2.5" />OK</span>}
                             </div>
                             <Input id="mobile" value={formData.mobile} onChange={(e) => handleChange('mobile', e.target.value)} placeholder="9876543210" className="field-input" maxLength={10} disabled={mobileVerified} />
-                            {!mobileVerified && !mobileOtpSent && <button type="button" onClick={handleSendMobileOtp} disabled={verifyingMobile || !formData.mobile} className="btn-otp" style={{ marginTop: '0.6rem' }}>{verifyingMobile ? 'Sending�' : 'Send OTP via SMS'}</button>}
+                            {!mobileVerified && !mobileOtpSent && <button type="button" onClick={handleSendMobileOtp} disabled={verifyingMobile || !formData.mobile} className="btn-otp" style={{ marginTop: '0.6rem' }}>{verifyingMobile ? 'Sending…' : 'Send OTP via SMS'}</button>}
                             {mobileOtpSent && !mobileVerified && (
                               <div className="otp-panel" style={{ marginTop: '0.6rem' }}>
                                 <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.4rem' }}>
@@ -698,7 +714,7 @@ export function EnhancedRegisterForm({ onBackToLogin }: EnhancedRegisterFormProp
                               {emailVerified && <span className="verified-pill"><CheckCircle2 className="h-2.5 w-2.5" />OK</span>}
                             </div>
                             <Input id="email" value={formData.email} onChange={(e) => handleChange('email', e.target.value)} placeholder="name@company.com" className="field-input" disabled={emailVerified} />
-                            {!emailVerified && !emailOtpSent && <button type="button" onClick={handleSendEmailOtp} disabled={verifyingEmail || !formData.email} className="btn-otp" style={{ marginTop: '0.6rem' }}>{verifyingEmail ? 'Sending�' : 'Send OTP via Email'}</button>}
+                            {!emailVerified && !emailOtpSent && <button type="button" onClick={handleSendEmailOtp} disabled={verifyingEmail || !formData.email} className="btn-otp" style={{ marginTop: '0.6rem' }}>{verifyingEmail ? 'Sending…' : 'Send OTP via Email'}</button>}
                             {emailOtpSent && !emailVerified && (
                               <div className="otp-panel" style={{ marginTop: '0.6rem' }}>
                                 <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.4rem' }}>
@@ -748,7 +764,7 @@ export function EnhancedRegisterForm({ onBackToLogin }: EnhancedRegisterFormProp
                     </div>
 
                     <button type="submit" disabled={isLoading || !allVerificationsComplete} className="btn-gold" style={{ width: '100%', padding: '1rem', borderRadius: '3px' }}>
-                      {isLoading ? 'Processing�' : !gstVerified ? 'Verify GST to Continue' : !mobileVerified ? 'Verify Mobile to Continue' : !emailVerified ? 'Verify Email to Continue' : 'Complete Registration'}
+                      {isLoading ? 'Processing…' : !gstVerified ? 'Verify GST to Continue' : !mobileVerified ? 'Verify Mobile to Continue' : !emailVerified ? 'Verify Email to Continue' : 'Complete Registration'}
                     </button>
                     <p style={{ textAlign: 'center', fontSize: '0.65rem', color: '#c8b98a', marginTop: '1rem' }}>
                       By registering you agree to CALIQUO's{' '}
@@ -788,7 +804,7 @@ export function EnhancedRegisterForm({ onBackToLogin }: EnhancedRegisterFormProp
                     </div></div>
                   </div>
                   <button onClick={handlePreferencesComplete} disabled={isLoading} className="btn-gold" style={{ width: '100%', padding: '1rem', borderRadius: '3px', marginTop: '1.5rem' }}>
-                    {isLoading ? 'Saving�' : 'Continue'}
+                    {isLoading ? 'Saving…' : 'Continue'}
                   </button>
                 </div>
               )}
@@ -805,11 +821,11 @@ export function EnhancedRegisterForm({ onBackToLogin }: EnhancedRegisterFormProp
                   </div>
                   <div style={{ position: 'relative', marginBottom: '1rem' }}>
                     <Search className="absolute left-3 top-2.5 h-4 w-4" style={{ color: '#c8b98a' }} />
-                    <Input placeholder="Search by company or city�" value={agentSearchTerm} onChange={(e) => setAgentSearchTerm(e.target.value)} className="field-input" style={{ paddingLeft: '2rem' }} />
+                    <Input placeholder="Search by company or city…" value={agentSearchTerm} onChange={(e) => setAgentSearchTerm(e.target.value)} className="field-input" style={{ paddingLeft: '2rem' }} />
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', maxHeight: '380px', overflowY: 'auto', marginBottom: '1.5rem' }}>
                     {loadingAgents ? (
-                      <p style={{ textAlign: 'center', color: '#9a8b6a', padding: '2rem' }}>Loading partners�</p>
+                      <p style={{ textAlign: 'center', color: '#9a8b6a', padding: '2rem' }}>Loading partners…</p>
                     ) : filteredAgents.length > 0 ? filteredAgents.map((agent) => (
                       <div key={agent.id} onClick={() => setSelectedAgentGst(agent.gst)} style={{ padding: '1rem 1.25rem', background: selectedAgentGst === agent.gst ? '#fffbeb' : '#fffef9', border: `1.5px solid ${selectedAgentGst === agent.gst ? '#d4a843' : '#e5d8bc'}`, borderRadius: '3px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', transition: 'all 0.2s' }}>
                         <div>
@@ -821,7 +837,7 @@ export function EnhancedRegisterForm({ onBackToLogin }: EnhancedRegisterFormProp
                     )) : <p style={{ textAlign: 'center', color: '#9a8b6a', padding: '2rem' }}>No partners found.</p>}
                   </div>
                   <button onClick={handleAgentSelectionComplete} disabled={!selectedAgentGst || isLoading} className="btn-gold" style={{ width: '100%', padding: '1rem', borderRadius: '3px' }}>
-                    {isLoading ? 'Setting up dashboard�' : 'Complete Registration'}
+                    {isLoading ? 'Setting up dashboard…' : 'Complete Registration'}
                   </button>
                 </div>
               )}

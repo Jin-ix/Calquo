@@ -364,12 +364,15 @@ export function ManufacturerDashboard({ initialTab = 'home' }: ManufacturerDashb
               </p>
               {user && (
                 <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
-                  <div className="glass-panel px-4 py-2 rounded-full flex items-center gap-2 border-white/20 text-white shadow-lg">
-                    <Building className="h-4 w-4 text-accent-gold-light" />
-                    <span className="font-semibold tracking-wide">{user.company}</span>
+                  {/* Company name badge - high contrast solid style */}
+                  <div className="bg-zinc-900/80 backdrop-blur-md border border-amber-400/50 px-5 py-2.5 rounded-full flex items-center gap-2.5 shadow-lg">
+                    <Building className="h-4 w-4 text-amber-400" />
+                    <span className="font-bold tracking-wide text-white text-sm">{user.company}</span>
                   </div>
-                  <div className="bg-white/10 backdrop-blur-md px-4 py-2 rounded-full flex items-center gap-2 border border-white/10 text-white/90">
-                    <span className="text-sm tracking-widest uppercase">Verified Manufacturer</span>
+                  {/* Verified badge - clear green with check icon */}
+                  <div className="bg-emerald-500 px-5 py-2.5 rounded-full flex items-center gap-2 shadow-md">
+                    <CheckCircle className="h-4 w-4 text-white" />
+                    <span className="text-sm font-bold tracking-widest uppercase text-white">Verified Manufacturer</span>
                   </div>
                 </div>
               )}

@@ -36,7 +36,7 @@ import {
 } from 'lucide-react';
 import { useLanguage } from '../context/LanguageProvider';
 import { useAuth, UserRole } from '../auth/AuthProvider';
-import { registrationAPI } from '../../utils/api';
+import { registrationAPI } from '../../utils/api-supabase';
 import { toast } from 'sonner';
 import { useRegistrationEvents, registrationEvents } from '../../utils/registrationEvents';
 import { OfflineModeWarning } from './OfflineModeWarning';
@@ -151,7 +151,7 @@ export function UserManagement({ onUserUpdate }: UserManagementProps) {
   const loadUsers = async () => {
     try {
       setLoading(true);
-      console.log('📥 Fetching users from database...');
+      console.log('ðŸ“¥ Fetching users from database...');
       
       // Load companies data from the database via API
       const response = await registrationAPI.getCompanies();
@@ -185,16 +185,16 @@ export function UserManagement({ onUserUpdate }: UserManagementProps) {
           arr.findIndex(u => u.id === user.id) === index
         );
         
-        console.log(`✅ Loaded ${uniqueUsers.length} users from database`);
+        console.log(`âœ… Loaded ${uniqueUsers.length} users from database`);
         setUsers(uniqueUsers);
         onUserUpdate?.(uniqueUsers);
       } else {
-        console.warn('⚠️ API returned success but no companies array');
+        console.warn('âš ï¸ API returned success but no companies array');
         console.warn('Response:', response);
         setUsers([]);
       }
     } catch (error: any) {
-      console.error('❌ Failed to load users:', error);
+      console.error('âŒ Failed to load users:', error);
       
       // Detect specific error types
       if (error.message?.includes('fetch') || error.message?.includes('Network')) {
@@ -226,7 +226,7 @@ export function UserManagement({ onUserUpdate }: UserManagementProps) {
     // Set up periodic refresh every 30 seconds to catch external changes
     // This is a simple alternative to realtime subscriptions
     const intervalId = setInterval(() => {
-      console.log('🔄 Auto-refresh: Checking for updates...');
+      console.log('ðŸ”„ Auto-refresh: Checking for updates...');
       loadUsers();
     }, 30000); // 30 seconds
 
@@ -241,7 +241,7 @@ export function UserManagement({ onUserUpdate }: UserManagementProps) {
   // ============================================================================
 
   useRegistrationEvents((event) => {
-    console.log('📨 Received registration event:', event);
+    console.log('ðŸ“¨ Received registration event:', event);
     
     if (event.type === 'user_registered') {
       toast.success('New User Registered', {
@@ -389,7 +389,7 @@ export function UserManagement({ onUserUpdate }: UserManagementProps) {
 
       if (editingUser) {
         // UPDATE existing user
-        console.log('📝 Updating user:', editingUser.id);
+        console.log('ðŸ“ Updating user:', editingUser.id);
         
         try {
           const response = await registrationAPI.updateCompany(editingUser.id, {
@@ -405,7 +405,7 @@ export function UserManagement({ onUserUpdate }: UserManagementProps) {
           });
 
           if (response.success) {
-            console.log('✅ User updated successfully in database');
+            console.log('âœ… User updated successfully in database');
             toast.success('User updated successfully');
             
             /**
@@ -418,7 +418,7 @@ export function UserManagement({ onUserUpdate }: UserManagementProps) {
             throw new Error(response.error || 'Update failed');
           }
         } catch (apiError) {
-          console.error('❌ Update API failed:', apiError);
+          console.error('âŒ Update API failed:', apiError);
           toast.error('Failed to update user in database', {
             description: apiError instanceof Error ? apiError.message : 'Unknown error'
           });
@@ -426,8 +426,8 @@ export function UserManagement({ onUserUpdate }: UserManagementProps) {
         }
       } else {
         // CREATE new user
-        console.log('➕ Creating new user:', formData.company_name);
-        console.log('📋 Form data:', {
+        console.log('âž• Creating new user:', formData.company_name);
+        console.log('ðŸ“‹ Form data:', {
           owner_name: formData.owner_name,
           mobile: formData.mobile,
           company_name: formData.company_name,
@@ -439,17 +439,17 @@ export function UserManagement({ onUserUpdate }: UserManagementProps) {
         
         try {
           // First check if GST already exists
-          console.log('🔍 Checking if GST exists:', formData.gst_number);
+          console.log('ðŸ” Checking if GST exists:', formData.gst_number);
           const existingCompanies = users.filter(u => u.gst_number === formData.gst_number);
           if (existingCompanies.length > 0) {
-            console.warn('⚠️ GST already registered:', formData.gst_number);
+            console.warn('âš ï¸ GST already registered:', formData.gst_number);
             toast.error('GST number already registered', {
               description: `Company "${existingCompanies[0].company_name}" already uses this GST number`
             });
             return;
           }
           
-          console.log('🌐 Calling API to create user...');
+          console.log('ðŸŒ Calling API to create user...');
           
           let response;
           try {
@@ -467,9 +467,9 @@ export function UserManagement({ onUserUpdate }: UserManagementProps) {
               status: formData.status
             });
           } catch (fetchError) {
-            console.error('❌ API call threw exception:', fetchError);
-            console.error('❌ Exception type:', fetchError?.constructor?.name);
-            console.error('❌ Exception message:', fetchError instanceof Error ? fetchError.message : String(fetchError));
+            console.error('âŒ API call threw exception:', fetchError);
+            console.error('âŒ Exception type:', fetchError?.constructor?.name);
+            console.error('âŒ Exception message:', fetchError instanceof Error ? fetchError.message : String(fetchError));
             
             setLastError({
               message: 'API call failed',
@@ -482,18 +482,18 @@ export function UserManagement({ onUserUpdate }: UserManagementProps) {
             return;
           }
 
-          console.log('📡 API response:', response);
-          console.log('📡 Response type:', typeof response);
-          console.log('📡 Response keys:', response ? Object.keys(response) : 'null');
-          console.log('📡 response.success:', response?.success);
-          console.log('📡 response.company:', response?.company);
-          console.log('📡 response.error:', response?.error);
-          console.log('📡 response.details:', response?.details);
-          console.log('📡 response.errorCode:', response?.errorCode);
+          console.log('ðŸ“¡ API response:', response);
+          console.log('ðŸ“¡ Response type:', typeof response);
+          console.log('ðŸ“¡ Response keys:', response ? Object.keys(response) : 'null');
+          console.log('ðŸ“¡ response.success:', response?.success);
+          console.log('ðŸ“¡ response.company:', response?.company);
+          console.log('ðŸ“¡ response.error:', response?.error);
+          console.log('ðŸ“¡ response.details:', response?.details);
+          console.log('ðŸ“¡ response.errorCode:', response?.errorCode);
 
           // Check for offline mode
           if (response?.message === 'Offline mode active') {
-            console.error('❌ OFFLINE MODE DETECTED!');
+            console.error('âŒ OFFLINE MODE DETECTED!');
             console.error('The offline mode initializer is intercepting API calls.');
             console.error('Backend is not being reached. Offline mode should be disabled.');
             
@@ -510,9 +510,9 @@ export function UserManagement({ onUserUpdate }: UserManagementProps) {
           }
 
           if (response && response.success && response.company) {
-            console.log('✅ User created successfully in database');
-            console.log('✅ Company ID:', response.company.id);
-            console.log('✅ User ID:', response.user?.id);
+            console.log('âœ… User created successfully in database');
+            console.log('âœ… Company ID:', response.company.id);
+            console.log('âœ… User ID:', response.user?.id);
             
             // Clear any previous errors
             setLastError(null);
@@ -524,7 +524,7 @@ export function UserManagement({ onUserUpdate }: UserManagementProps) {
             /**
              * SYNC POINT 5B: Refetch after create
              */
-            console.log('🔄 Reloading users from database...');
+            console.log('ðŸ”„ Reloading users from database...');
             await loadUsers();
             
             registrationEvents.userRegistered(
@@ -534,12 +534,12 @@ export function UserManagement({ onUserUpdate }: UserManagementProps) {
             );
           } else {
             // Handle specific API errors
-            console.error('❌ API returned non-success response');
-            console.error('❌ Full response object:', JSON.stringify(response, null, 2));
-            console.error('❌ response.error:', response?.error);
-            console.error('❌ response.message:', response?.message);
-            console.error('❌ response.details:', response?.details);
-            console.error('❌ response.errorCode:', response?.errorCode);
+            console.error('âŒ API returned non-success response');
+            console.error('âŒ Full response object:', JSON.stringify(response, null, 2));
+            console.error('âŒ response.error:', response?.error);
+            console.error('âŒ response.message:', response?.message);
+            console.error('âŒ response.details:', response?.details);
+            console.error('âŒ response.errorCode:', response?.errorCode);
             
             // If response is completely empty or malformed
             if (!response || typeof response !== 'object') {
@@ -558,7 +558,7 @@ export function UserManagement({ onUserUpdate }: UserManagementProps) {
             const errorDetails = response.details || response.hint || '';
             const errorCode = response.errorCode || response.code || '';
             
-            console.error('❌ Extracted error:', { errorMessage, errorDetails, errorCode });
+            console.error('âŒ Extracted error:', { errorMessage, errorDetails, errorCode });
             
             if (errorMessage?.includes('already exists')) {
               setLastError({
@@ -625,8 +625,8 @@ export function UserManagement({ onUserUpdate }: UserManagementProps) {
             }
           }
         } catch (apiError) {
-          console.error('❌ Create API failed:', apiError);
-          console.error('❌ Error details:', {
+          console.error('âŒ Create API failed:', apiError);
+          console.error('âŒ Error details:', {
             message: apiError instanceof Error ? apiError.message : String(apiError),
             stack: apiError instanceof Error ? apiError.stack : undefined
           });
@@ -677,7 +677,7 @@ export function UserManagement({ onUserUpdate }: UserManagementProps) {
       setEditingUser(null);
       setFormErrors({});
     } catch (error) {
-      console.error('❌ Unexpected error saving user:', error);
+      console.error('âŒ Unexpected error saving user:', error);
       toast.error('Failed to save user', {
         description: error instanceof Error ? error.message : 'Please try again'
       });
@@ -695,12 +695,12 @@ export function UserManagement({ onUserUpdate }: UserManagementProps) {
       const deletedUser = users.find(user => user.id === userId);
       
       if (!deletedUser) {
-        console.error('❌ User not found in local state');
+        console.error('âŒ User not found in local state');
         toast.error('User not found. Please refresh and try again.');
         return;
       }
       
-      console.log('🗑️ Deleting user from database:', {
+      console.log('ðŸ—‘ï¸ Deleting user from database:', {
         id: userId,
         name: deletedUser.owner_name,
         company: deletedUser.company_name
@@ -710,7 +710,7 @@ export function UserManagement({ onUserUpdate }: UserManagementProps) {
       const response = await registrationAPI.deleteCompany(userId);
       
       if (response.success) {
-        console.log('✅ User deleted successfully from database');
+        console.log('âœ… User deleted successfully from database');
         toast.success('User deleted successfully', {
           description: `${deletedUser.company_name} has been permanently removed`
         });
@@ -721,13 +721,13 @@ export function UserManagement({ onUserUpdate }: UserManagementProps) {
          */
         await loadUsers();
       } else {
-        console.error('❌ Database deletion failed:', response.error);
+        console.error('âŒ Database deletion failed:', response.error);
         toast.error('Failed to delete from database', {
           description: response.error || 'Backend returned error. Check if backend is deployed.'
         });
       }
     } catch (apiError: any) {
-      console.error('❌ Delete API failed:', apiError);
+      console.error('âŒ Delete API failed:', apiError);
       
       // Check if it's a network error (backend not deployed)
       if (apiError.message?.includes('fetch') || apiError.message?.includes('Network')) {
@@ -746,7 +746,7 @@ export function UserManagement({ onUserUpdate }: UserManagementProps) {
   const handleVerifyUser = async (user: CompanyUser) => {
     try {
       const newStatus = !user.is_verified;
-      console.log(`🛡️ ${newStatus ? 'Verifying' : 'Unverifying'} user:`, user.id);
+      console.log(`ðŸ›¡ï¸ ${newStatus ? 'Verifying' : 'Unverifying'} user:`, user.id);
       
       const response = await registrationAPI.updateCompany(user.id, {
         is_verified: newStatus,
@@ -763,7 +763,7 @@ export function UserManagement({ onUserUpdate }: UserManagementProps) {
         throw new Error(response.error || 'Update failed');
       }
     } catch (error) {
-      console.error('❌ Verification failed:', error);
+      console.error('âŒ Verification failed:', error);
       toast.error('Failed to update verification status');
     }
   };
@@ -771,7 +771,7 @@ export function UserManagement({ onUserUpdate }: UserManagementProps) {
   const handleSuspendUser = async (userId: string, currentStatus: string) => {
     try {
       const newStatus = currentStatus === 'suspended' ? 'active' : 'suspended';
-      console.log(`🛡️ ${newStatus === 'suspended' ? 'Suspending' : 'Activating'} user:`, userId);
+      console.log(`ðŸ›¡ï¸ ${newStatus === 'suspended' ? 'Suspending' : 'Activating'} user:`, userId);
       
       const response = await registrationAPI.updateCompany(userId, {
         status: newStatus
@@ -784,7 +784,7 @@ export function UserManagement({ onUserUpdate }: UserManagementProps) {
         throw new Error(response.error || 'Update failed');
       }
     } catch (error) {
-      console.error('❌ Status update failed:', error);
+      console.error('âŒ Status update failed:', error);
       toast.error('Failed to update user status');
     }
   };
@@ -1427,3 +1427,4 @@ export function UserManagement({ onUserUpdate }: UserManagementProps) {
     </div>
   );
 }
+
