@@ -126,6 +126,8 @@ export function EnhancedModernProductDetail({
     } else {
       if ((product as any).images?.length) imgs.push(...(product as any).images);
     }
+    if (typeof (product as any).image === 'string') imgs.push((product as any).image);
+    if (typeof (product as any).imageUrl === 'string') imgs.push((product as any).imageUrl);
     return imgs.length > 0 ? Array.from(new Set(imgs)) : [];
   }, [product]);
 
@@ -133,7 +135,11 @@ export function EnhancedModernProductDetail({
 
   const totalStock = useMemo(() => {
     if (isEnhancedStock(product)) {
-      return product.combinations.reduce((sum, c) => sum + c.availableQuantity, 0);
+      let sum = product.combinations.reduce((sum, c) => sum + c.availableQuantity, 0);
+      if (sum === 0 && (product as any).quantity !== undefined) {
+        sum = (product as any).quantity;
+      }
+      return sum;
     }
     return (product as any).quantity || 0;
   }, [product]);
@@ -159,8 +165,8 @@ export function EnhancedModernProductDetail({
     user?.role,
     user?.profile?.retailerType
   );
-  const purchasePrice = isOwner ? (basePrice * 0.75) : (effectivePrice || basePrice); // Mock logic for owner view, otherwise use effective
-  const displayPrice = effectivePrice || basePrice; // The price shown to the user
+  const purchasePrice = isOwner ? (basePrice * 0.75) : (effectivePrice || basePrice || (product as any).price); // Mock logic for owner view, otherwise use effective
+  const displayPrice = effectivePrice || basePrice || (product as any).price || 0; // The price shown to the user
   const gstRate = 5; // Fixed as per requirements
 
   // 3. Selection State

@@ -14,13 +14,14 @@ import { useStock } from '../context/StockContext';
 
 export function StockManagementHub() {
   const { user } = useAuth();
-  const { isFirebaseSync } = useStock();
+  const { isFirebaseSync, addStock } = useStock();
   const [activeTab, setActiveTab] = useState<'browse' | 'my-stock' | 'add-stock'>('browse');
   const [isAddingStock, setIsAddingStock] = useState(false);
 
   // Handle stock submission from AddStockWizard
-  const handleStockSubmit = (stockData: any) => {
+  const handleStockSubmit = async (stockData: any) => {
     console.log('✅ Stock submitted:', stockData);
+    await addStock(stockData);
     // Firebase listener will automatically update BrowseStockView and MyStockView
     setIsAddingStock(false);
     setActiveTab('my-stock');

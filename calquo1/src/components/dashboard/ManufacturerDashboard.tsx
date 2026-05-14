@@ -45,6 +45,7 @@ import { SpotlightCard } from '../ui/SpotlightCard';
 import { HoverGlowCard } from '../ui/HoverGlowCard';
 import { MagneticButton } from '../ui/MagneticButton';
 import { EditStockForm } from '../stock/EditStockForm';
+import { useStock } from '../context/StockProvider';
 
 
 interface ManufacturerStats {
@@ -270,8 +271,9 @@ export function ManufacturerDashboard({ initialTab = 'home' }: ManufacturerDashb
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState(initialTab === 'overview' ? 'home' : initialTab);
   const [stats, setStats] = useState(mockManufacturerStats);
-  const [expandedMetric, setExpandedMetric] = useState<string | null>(null); // Added for Bento Morphing
+   const [expandedMetric, setExpandedMetric] = useState<string | null>(null); // Added for Bento Morphing
   const [stockToEdit, setStockToEdit] = useState<any | null>(null);
+  const { addStock } = useStock();
 
   const { scrollY } = useScroll();
   const headerFontWeight = useTransform(scrollY, [0, 300], [800, 400]);
@@ -584,9 +586,12 @@ export function ManufacturerDashboard({ initialTab = 'home' }: ManufacturerDashb
       {
         activeTab === 'add-stock' && (
           <EnhancedAddStockFormWithImages
-            onSubmit={(stockItem) => {
-              console.log('Stock item submitted:', stockItem);
-              setActiveTab('my-stock');
+            onSubmit={async (stockItem) => {
+              console.log('🚀 [ManufacturerDashboard] Submitting stock item:', stockItem.name);
+              const success = await addStock(stockItem);
+              if (success) {
+                setActiveTab('my-stock');
+              }
             }}
             onCancel={() => {
               setActiveTab('my-stock');

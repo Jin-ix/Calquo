@@ -7,6 +7,7 @@ import { ItemSet, SetOrderRequest, SetPurchaseRequest } from '../stock/ItemSetTy
 import { Rating } from '../rating/RatingSystem';
 import { LogisticsAgent, DeliveryCity, OrderLogistics } from '../logistics/LogisticsTypes';
 import { toast } from 'sonner';
+import { useStock } from '../context/StockContext';
 
 interface AppHandlersProps {
   user: any;
@@ -345,8 +346,9 @@ interface AppHandlersProps {
 ]; */
 
 export function useAppHandlers(props: AppHandlersProps) {
+  const { user } = useAuth();
+  const { addStock } = useStock();
   const {
-    user,
     stocks,
     setStocks,
     itemSets,
@@ -377,31 +379,15 @@ export function useAppHandlers(props: AppHandlersProps) {
   } = props;
 
   const handleAddStock = useCallback(async (newStock: Omit<StockItem, 'id' | 'dateAdded'>) => {
-    // Stock is already saved by AddStockWizard (either to Firebase or via onSubmit callback)
-    // If Firebase is configured, real-time listeners will handle the update
-    // If not, we need to manually update state here
-    
-    // Check if we're in Firebase mode or local mode
     try {
-      const { isFirebaseDemoMode } = await import('../../utils/firebase/config');
-      
-      if (isFirebaseDemoMode) {
-        // Local mode - manually add to stocks
-        const stock: StockItem = {
-          ...newStock,
-          id: Math.random().toString(36).substr(2, 9),
-          dateAdded: new Date().toISOString()
-        };
-        setStocks(prev => [stock, ...prev]);
-      }
-      // If Firebase mode, listeners will handle it automatically
+      console.log('📦 Saving stock via StockProvider in AppMain');
+      await addStock(newStock);
     } catch (error) {
       console.error('Error in handleAddStock:', error);
     }
     
     setActiveView('my-stock');
-    // Toast is already shown by AddStockWizard
-  }, [setStocks, setActiveView]);
+  }, [addStock, setActiveView]);
 
   const handleAddItemSet = useCallback((newItemSet: Omit<ItemSet, 'id' | 'dateAdded'>) => {
     const itemSet: ItemSet = {

@@ -101,19 +101,12 @@ export function MobileAppWrapper({ user, onPageChange }: MobileAppWrapperProps) 
   // Handle stock submission
   const handleStockSubmit = async (stockData: any) => {
     try {
-      // Check if we're in local sync mode (Firebase not configured)
-      const { isFirebaseDemoMode } = await import('../../utils/firebase/config');
-      
-      if (isFirebaseDemoMode) {
-        // Local sync mode
-        console.log('📦 Local sync mode - saving stock via StockProvider');
-        if (editingStock) {
-           await updateStock(editingStock.id, stockData);
-        } else {
-           await addStock(stockData);
-        }
+      console.log('📦 Saving stock via StockProvider');
+      if (editingStock) {
+         await updateStock(editingStock.id, stockData);
+      } else {
+         await addStock(stockData);
       }
-      // If Firebase mode, AddStockWizard already saved it and real-time listeners will handle the update
       
       setShowAddStockDialog(false);
       setEditingStock(null);

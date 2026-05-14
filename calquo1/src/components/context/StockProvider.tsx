@@ -58,6 +58,65 @@ export function StockProvider({ children }: StockProviderProps) {
     return () => clearTimeout(emergencyTimeout);
   }, [isLoading]);
 
+  // Helper to map Supabase snake_case data back to frontend camelCase StockItem
+  const mapSupabaseToStock = (dbItem: any): EnhancedStockItem => {
+    const parseNum = (val: any) => {
+      if (val === null || val === undefined) return 0;
+      const parsed = parseFloat(val);
+      return isNaN(parsed) ? 0 : parsed;
+    };
+
+    return {
+      ...dbItem,
+      id: dbItem.id,
+      name: dbItem.name,
+      category: dbItem.category,
+      hsnCode: dbItem.hsn_code,
+      description: dbItem.description,
+      size: dbItem.size || 'One Size',
+      color: dbItem.color || 'Default',
+      quantity: parseInt(dbItem.quantity) || 0,
+      price: parseNum(dbItem.base_price),
+      basePrice: parseNum(dbItem.base_price),
+      mrp: dbItem.mrp ? parseNum(dbItem.mrp) : undefined,
+      singleShopPrice: dbItem.single_shop_price ? parseNum(dbItem.single_shop_price) : undefined,
+      multiShopPrice: dbItem.multi_shop_price ? parseNum(dbItem.multi_shop_price) : undefined,
+      dealerPrice: dbItem.dealer_price ? parseNum(dbItem.dealer_price) : undefined,
+      retailerPrice: dbItem.retailer_price ? parseNum(dbItem.retailer_price) : undefined,
+      minOrderQuantity: parseInt(dbItem.min_order_quantity) || 1,
+      fabricType: dbItem.fabric_type || '',
+      fabricDescription: dbItem.fabric_description || '',
+      deliveryTime: dbItem.delivery_time,
+      itemCode: dbItem.item_code,
+      unitOfMeasure: dbItem.unit_of_measure || 'PCS',
+      batchCode: dbItem.batch_code,
+      itemSetType: dbItem.item_set_type || 'individual_flex',
+      variants: dbItem.variants || [],
+      variantGroups: dbItem.variant_groups || [],
+      combinations: dbItem.combinations || [],
+      colors: dbItem.colors || [],
+      sizes: dbItem.sizes || [],
+      images: dbItem.images || [],
+      productImages: dbItem.images || [],
+      mainImages: dbItem.images || [],
+      vtonImageUrl: dbItem.vton_image_url,
+      mainImageIndex: dbItem.main_image_index || 0,
+      notes: dbItem.notes,
+      tradersOnly: dbItem.traders_only || false,
+      selectedTraders: dbItem.selected_traders || [],
+      hasOffer: dbItem.has_offer || false,
+      offerPrice: dbItem.offer_price ? parseNum(dbItem.offer_price) : undefined,
+      offerType: dbItem.offer_type,
+      offerTimeWeeks: dbItem.offer_time_weeks ? parseInt(dbItem.offer_time_weeks) : undefined,
+      offerMinQuantity: dbItem.offer_min_quantity ? parseInt(dbItem.offer_min_quantity) : undefined,
+      supplier: dbItem.seller_company || dbItem.supplier || 'Unknown Supplier',
+      supplierType: dbItem.supplier_type || 'manufacturer',
+      location: dbItem.location || 'Mumbai',
+      status: dbItem.status || 'active',
+      dateAdded: dbItem.created_at || new Date().toISOString(),
+    };
+  };
+
   // Load all stock data - simplified background approach
   const loadAllStock = async () => {
     const operationId = `loadAllStock_${Date.now()}`;
@@ -66,8 +125,38 @@ export function StockProvider({ children }: StockProviderProps) {
     try {
       setError(null);
 
-      // Try to load API data with short timeout (only if online)
+      // Try to load from Supabase first (Modern approach)
       if (navigator.onLine) {
+        try {
+          console.log('📦 [StockProvider] Fetching all stock from Supabase...');
+          const { data: dbStocks, error: dbError } = await supabase
+            .from('stock_items')
+            .select('*')
+            .order('created_at', { ascending: false });
+
+          if (dbError) throw dbError;
+
+          if (dbStocks && dbStocks.length > 0) {
+            console.log(`✅ [StockProvider] Found ${dbStocks.length} items in Supabase`);
+            const mappedStocks = dbStocks.map(mapSupabaseToStock);
+            const displayReady = createDisplayReadyStock(mappedStocks);
+            setAllStock(displayReady);
+            
+            // Update cache
+            localStorage.setItem('allStock_cache', JSON.stringify(displayReady));
+            localStorage.setItem('allStock_cache_timestamp', Date.now().toString());
+            
+            // If we found data in Supabase, we can stop here or proceed to Firebase sync
+            if (!isFirebaseSync) {
+                setIsLoading(false);
+                return;
+            }
+          }
+        } catch (supabaseErr) {
+          console.warn('⚠️ Supabase fetch failed, falling back to Firebase:', supabaseErr);
+        }
+
+        // Try to load API data with short timeout (only if online and Supabase failed/empty)
         const controller = new AbortController();
         const timeoutId = setTimeout(() => {
           controller.abort();
@@ -83,17 +172,7 @@ export function StockProvider({ children }: StockProviderProps) {
           } else if (data.data) {
             stocks = data.data;
           } else if (Array.isArray(data)) {
-            // Direct API response
             stocks = data;
-          }
-
-          // DEBUG: Log the raw stock data
-          console.log('🔥 RAW FIREBASE STOCK DATA:', stocks.length > 0 ? stocks[0] : 'No stocks');
-          if (stocks.length > 0) {
-            console.log('🔥 FIRST STOCK ITEM FIELDS:', Object.keys(stocks[0]));
-            console.log('🔥 FIRST STOCK basePrice:', stocks[0].basePrice);
-            console.log('🔥 FIRST STOCK singleShopPrice:', stocks[0].singleShopPrice);
-            console.log('🔥 FIRST STOCK multiShopPrice:', stocks[0].multiShopPrice);
           }
 
           clearTimeout(timeoutId);
@@ -106,9 +185,7 @@ export function StockProvider({ children }: StockProviderProps) {
             try {
               localStorage.setItem('allStock_cache', JSON.stringify(apiStocks));
               localStorage.setItem('allStock_cache_timestamp', Date.now().toString());
-            } catch (cacheError) {
-              // Silent cache failure
-            }
+            } catch (cacheError) {}
 
             if (process.env.NODE_ENV === 'development') {
               console.log(`Updated with ${apiStocks.length} API stock items`);
@@ -116,7 +193,6 @@ export function StockProvider({ children }: StockProviderProps) {
           }
         } catch (apiError) {
           clearTimeout(timeoutId);
-
           // Try cached data as fallback
           const cached = localStorage.getItem('allStock_cache');
           const cacheTimestamp = localStorage.getItem('allStock_cache_timestamp');
@@ -127,18 +203,8 @@ export function StockProvider({ children }: StockProviderProps) {
               const cachedStocks = JSON.parse(cached);
               if (cachedStocks.length > 0) {
                 setAllStock(cachedStocks);
-                if (process.env.NODE_ENV === 'development') {
-                  console.log('Using cached stock data');
-                }
               }
-            } catch (e) {
-              // Silent cache failure
-            }
-          }
-
-          // Log API error only in development
-          if (process.env.NODE_ENV === 'development') {
-            console.log('Stock API failed, using fallback data:', apiError);
+            } catch (e) {}
           }
         }
       }
@@ -147,11 +213,10 @@ export function StockProvider({ children }: StockProviderProps) {
         console.error('Error in loadAllStock:', error);
       }
     } finally {
+      setIsLoading(false);
       performanceTracker.endOperation(operationId, true);
     }
   };
-
-
 
   // Load user's stock data - optimized approach
   const loadUserStock = async () => {
@@ -163,11 +228,34 @@ export function StockProvider({ children }: StockProviderProps) {
     try {
       setError(null);
 
-      // Start with empty user stock
-      setUserStock([]);
-
-      // Try to load API data in background with timeout (only if online)
+      // Try Supabase first
       if (navigator.onLine) {
+        try {
+          console.log(`📦 [StockProvider] Fetching user stock for ${user.company} from Supabase...`);
+          const { data: dbStocks, error: dbError } = await supabase
+            .from('stock_items')
+            .select('*')
+            .eq('seller_company', user.company)
+            .order('created_at', { ascending: false });
+
+          if (dbError) throw dbError;
+
+          if (dbStocks && dbStocks.length > 0) {
+            console.log(`✅ [StockProvider] Found ${dbStocks.length} user items in Supabase`);
+            const mappedStocks = dbStocks.map(mapSupabaseToStock);
+            const displayReady = createDisplayReadyStock(mappedStocks);
+            setUserStock(displayReady);
+            
+            // Cache successful response
+            localStorage.setItem(`userStock_${user.company}`, JSON.stringify(displayReady));
+            localStorage.setItem(`userStock_${user.company}_timestamp`, Date.now().toString());
+            return; // Success, no need to fallback
+          }
+        } catch (supabaseErr) {
+          console.warn('⚠️ Supabase user stock fetch failed:', supabaseErr);
+        }
+
+        // Try to load API data in background with timeout (Fallback)
         try {
           const response = await Promise.race([
             stockAPI.getUserStock(user.company),
@@ -177,64 +265,25 @@ export function StockProvider({ children }: StockProviderProps) {
           if (response.success) {
             const rawUserStocks = response.stocks || [];
             const displayReadyUserStocks = createDisplayReadyStock(rawUserStocks);
-
             setUserStock(displayReadyUserStocks);
 
             // Cache successful response
             try {
               localStorage.setItem(`userStock_${user.company}`, JSON.stringify(displayReadyUserStocks));
               localStorage.setItem(`userStock_${user.company}_timestamp`, Date.now().toString());
-            } catch (cacheError) {
-              // Silent cache failure
-              if (process.env.NODE_ENV === 'development') {
-                console.warn('Failed to cache user stock data:', cacheError);
-              }
-            }
-
-            if (process.env.NODE_ENV === 'development') {
-              console.log(`Loaded ${displayReadyUserStocks.length} stock items for user: ${user.company}`);
-            }
+            } catch (cacheError) {}
           }
         } catch (apiError) {
           // Check for cached data as fallback
           const cached = localStorage.getItem(`userStock_${user.company}`);
           const cacheTimestamp = localStorage.getItem(`userStock_${user.company}_timestamp`);
-          const isRecentCache = cacheTimestamp && (Date.now() - parseInt(cacheTimestamp)) < 6 * 60 * 60 * 1000; // 6 hours
+          const isRecentCache = cacheTimestamp && (Date.now() - parseInt(cacheTimestamp)) < 6 * 60 * 60 * 1000;
 
           if (cached && isRecentCache) {
             try {
               const cachedStocks = JSON.parse(cached);
               setUserStock(cachedStocks);
-              if (process.env.NODE_ENV === 'development') {
-                console.log('Using cached user stock data');
-              }
-            } catch (e) {
-              // Silent cache parse failure
-              if (process.env.NODE_ENV === 'development') {
-                console.warn('Failed to parse cached user stock data');
-              }
-            }
-          }
-          // If no cache or API fails, user stock stays empty (which is fine for demo)
-        }
-      } else {
-        // Offline - try cached user stock data
-        const cached = localStorage.getItem(`userStock_${user.company}`);
-        const cacheTimestamp = localStorage.getItem(`userStock_${user.company}_timestamp`);
-        const isRecentCache = cacheTimestamp && (Date.now() - parseInt(cacheTimestamp)) < 6 * 60 * 60 * 1000;
-
-        if (cached && isRecentCache) {
-          try {
-            const cachedStocks = JSON.parse(cached);
-            setUserStock(cachedStocks);
-            if (process.env.NODE_ENV === 'development') {
-              console.log('Using cached user stock data (offline)');
-            }
-          } catch (e) {
-            // Silent failure - user stock stays empty
-            if (process.env.NODE_ENV === 'development') {
-              console.warn('Failed to parse cached user stock data while offline');
-            }
+            } catch (e) {}
           }
         }
       }
@@ -242,7 +291,6 @@ export function StockProvider({ children }: StockProviderProps) {
       if (process.env.NODE_ENV === 'development') {
         console.error('Error in loadUserStock:', error);
       }
-      // Keep empty user stock for demo - don't set error
       setUserStock([]);
     }
   };
@@ -268,75 +316,178 @@ export function StockProvider({ children }: StockProviderProps) {
     }
   };
 
+  // Helper to map stock data to Supabase snake_case
+  const mapStockToSupabase = (item: any) => {
+    console.log('🔍 [StockProvider] Mapping item to Supabase. Source price:', item.price, 'Source qty:', item.quantity);
+    const mapped: any = {};
+    
+    // Mapping rules: if camelCase exists, map to snake_case. 
+    // If snake_case already exists, keep it.
+    const mapping: Record<string, string | string[]> = {
+      name: 'name',
+      category: 'category',
+      hsnCode: 'hsn_code',
+      description: 'description',
+      size: 'size',
+      color: 'color',
+      quantity: 'quantity',
+      price: 'base_price',
+      basePrice: 'base_price',
+      piecePrice: 'base_price',
+      mrp: 'mrp',
+      mrpPerPiece: 'mrp',
+      singleShopPrice: 'single_shop_price',
+      multiShopPrice: 'multi_shop_price',
+      dealerPrice: 'dealer_price',
+      retailer_price: 'retailer_price', // Handle already mapped
+      retailerPrice: 'retailer_price',
+      minOrderQuantity: 'min_order_quantity',
+      fabricType: 'fabric_type',
+      fabricDescription: 'fabric_description',
+      deliveryTime: 'delivery_time',
+      itemCode: 'item_code',
+      unitOfMeasure: 'unit_of_measure',
+      batchCode: 'batch_code',
+      itemSetType: 'item_set_type',
+      variants: 'variants',
+      variantGroups: 'variant_groups',
+      variant_groups: 'variant_groups',
+      combinations: 'combinations',
+      colors: 'colors',
+      sizes: 'sizes',
+      images: ['images', 'main_images'],
+      productImages: ['images', 'main_images'],
+      vtonImageUrl: 'vton_image_url',
+      mainImageIndex: 'main_image_index',
+      notes: 'notes',
+      tradersOnly: 'traders_only',
+      selectedTraders: 'selected_traders',
+      hasOffer: 'has_offer',
+      offerPrice: 'offer_price',
+      offerType: 'offer_type',
+      offerTimeWeeks: 'offer_time_weeks',
+      offerMinQuantity: 'offer_min_quantity',
+      supplier: ['supplier', 'seller_company'],
+      supplierType: 'supplier_type',
+      location: 'location',
+      unitMode: 'unit_mode',
+      bulkSellingMode: 'bulk_selling_mode',
+      status: 'status',
+      gstNumber: 'gst_number'
+    };
+
+    // Apply mapping
+    Object.keys(item).forEach(key => {
+      const target = mapping[key];
+      let value = item[key];
+      
+      // Convert numeric fields if they are strings or falsy
+      if (['price', 'basePrice', 'piecePrice', 'mrp', 'mrpPerPiece', 'singleShopPrice', 'multiShopPrice', 'dealerPrice', 'retailerPrice', 'retailer_price', 'offerPrice', 'quantity', 'minOrderQuantity'].includes(key)) {
+        if (value === null || value === undefined || value === '') {
+          value = 0;
+        } else if (typeof value === 'string') {
+          const parsed = parseFloat(value);
+          value = isNaN(parsed) ? 0 : parsed;
+        } else if (typeof value === 'number' && isNaN(value)) {
+          value = 0;
+        }
+      }
+
+      if (target) {
+        if (Array.isArray(target)) {
+          target.forEach(t => { mapped[t] = value; });
+        } else {
+          mapped[target] = value;
+        }
+      } else {
+        // Keep unknown keys as is (might be already snake_case)
+        mapped[key] = value;
+      }
+    });
+
+    // Special handling for nested offerData from AppMain
+    if (item.offerData) {
+      if (item.offerData.offerPrice) mapped.offer_price = parseFloat(item.offerData.offerPrice) || 0;
+      if (item.offerData.offerType) mapped.offer_type = item.offerData.offerType;
+      if (item.offerData.offerTimeWeeks) mapped.offer_time_weeks = parseInt(item.offerData.offerTimeWeeks) || null;
+      if (item.offerData.offerMinQuantity) mapped.offer_min_quantity = parseInt(item.offerData.offerMinQuantity) || null;
+    }
+
+    // Defaults for mandatory-ish fields
+    if (mapped.quantity === undefined || mapped.quantity === null || isNaN(mapped.quantity)) {
+      mapped.quantity = 0;
+    }
+    if (typeof mapped.quantity === 'string') {
+      mapped.quantity = parseInt(mapped.quantity) || 0;
+    }
+
+    // FALLBACK LOGIC: If base_price is 0 or missing, try to steal it from other pricing fields
+    const priceFields = ['base_price', 'single_shop_price', 'multi_shop_price', 'retailer_price', 'dealer_price'];
+    let finalBasePrice = 0;
+    for (const field of priceFields) {
+      const val = parseFloat(mapped[field]);
+      if (!isNaN(val) && val > 0) {
+        finalBasePrice = val;
+        break;
+      }
+    }
+    mapped.base_price = finalBasePrice;
+    
+    if (mapped.status === undefined) mapped.status = 'active';
+    
+    console.log('✅ [StockProvider] Mapping complete. Final base_price:', mapped.base_price, 'Final quantity:', mapped.quantity);
+    return mapped;
+  };
+
   // Add new stock item
   const addStock = async (stockData: any): Promise<boolean> => {
     try {
       console.log('📦 [StockProvider] Adding stock item:', stockData.name);
-      const response = await stockAPI.addStock(stockData);
+      
+      const supabasePayload = mapStockToSupabase(stockData);
+      console.log('🚀 [StockProvider] Final Supabase Payload:', JSON.stringify(supabasePayload, null, 2));
 
-      if (response.success || response.usingFallback) {
-        // Process new stock item to prioritize user-uploaded images
-        const rawNewStock = response.stock || stockData;
-        
-        // If response.stock is missing but success is true, it might be the Supabase shim
-        // which already added it. We'll use the stockData as a base.
-        if (!response.stock && response.success) {
-           console.log('ℹ️ [StockProvider] Response successful but missing stock object, using input data');
-        }
+      // Attempt via API first
+      console.log('📡 [StockProvider] Calling stockAPI.addStock...');
+      const response = await stockAPI.addStock(supabasePayload);
+      console.log('📥 [StockProvider] API Response:', response);
 
+      if (response.success) {
+        const rawNewStock = response.stock || supabasePayload;
         const processedNewStock = createDisplayReadyStock([rawNewStock])[0];
 
         if (processedNewStock) {
-          // Add to local state immediately for better UX
           setAllStock(prev => [processedNewStock, ...prev]);
-
-          // If it's the current user's stock, add to userStock as well
           if (user?.company === processedNewStock.supplier) {
             setUserStock(prev => [processedNewStock, ...prev]);
-          }
-
-          // Log if this item has user-uploaded images
-          if (process.env.NODE_ENV === 'development' && hasUserUploadedImages(processedNewStock)) {
-            console.log('Added new stock item with user images:');
-            logImagePrioritization(processedNewStock);
           }
         }
 
         toast.success('Stock item added successfully!');
         return true;
       } else {
-        // Fallback for Supabase environment - directly add to collection
-        console.warn('⚠️ [StockProvider] API failed, attempting direct Supabase insert fallback...');
-        try {
-          const newId = await addDocument('stock_items', stockData);
-          if (newId) {
-            const fallbackStock = { ...stockData, id: newId };
-            const processedFallback = createDisplayReadyStock([fallbackStock])[0];
-            
-            setAllStock(prev => [processedFallback, ...prev]);
-            if (user?.company === processedFallback.supplier) {
-              setUserStock(prev => [processedFallback, ...prev]);
-            }
-            
-            toast.success('Stock item added successfully (via Supabase)!');
-            return true;
-          }
-        } catch (dbError) {
-          console.error('❌ [StockProvider] Fallback insert failed:', dbError);
-        }
+        // Direct Supabase insert fallback
+        console.log('ℹ️ [StockProvider] API failed, using direct Supabase insert...');
+        const newId = await addDocument('stock_items', supabasePayload);
+        console.log('🆔 [StockProvider] Direct insert result (newId):', newId);
         
-        toast.error(response.error || 'Failed to add stock item');
+        if (newId) {
+          const fallbackStock = { ...supabasePayload, id: newId };
+          const processedFallback = createDisplayReadyStock([fallbackStock])[0];
+          
+          setAllStock(prev => [processedFallback, ...prev]);
+          if (user?.company === processedFallback.supplier) {
+            setUserStock(prev => [processedFallback, ...prev]);
+          }
+          
+          toast.success('Stock item added successfully!');
+          return true;
+        }
         return false;
       }
     } catch (error) {
       console.error('Error adding stock:', error);
-
-      // Check for timeout error
-      if (error.message?.includes('timeout') || error.message?.includes('timed out')) {
-        toast.error('Request timed out. Please check your connection and try again.');
-      } else {
-        toast.error('Failed to add stock item. Please try again.');
-      }
+      toast.error('Failed to add stock item.');
       return false;
     }
   };
@@ -344,44 +495,37 @@ export function StockProvider({ children }: StockProviderProps) {
   // Update stock item
   const updateStock = async (stockId: string, updates: any): Promise<boolean> => {
     try {
-      const response = await stockAPI.updateStock(stockId, updates);
+      console.log('🔄 [StockProvider] Updating stock item:', stockId);
+      const mappedUpdates = mapStockToSupabase(updates);
+      
+      const response = await stockAPI.updateStock(stockId, mappedUpdates);
 
       if (response.success) {
-        // Process updated stock item to prioritize user-uploaded images
-        const rawUpdatedStock = response.stock;
+        const rawUpdatedStock = response.stock || { ...updates, id: stockId };
         const processedUpdatedStock = createDisplayReadyStock([rawUpdatedStock])[0];
 
-        // Update in allStock
-        setAllStock(prev => prev.map(stock =>
-          stock.id === stockId ? processedUpdatedStock : stock
-        ));
-
-        // Update in userStock if applicable
-        setUserStock(prev => prev.map(stock =>
-          stock.id === stockId ? processedUpdatedStock : stock
-        ));
-
-        // Log if this updated item has user-uploaded images
-        if (process.env.NODE_ENV === 'development' && hasUserUploadedImages(processedUpdatedStock)) {
-          console.log('Updated stock item with user images:');
-          logImagePrioritization(processedUpdatedStock);
-        }
+        setAllStock(prev => prev.map(stock => stock.id === stockId ? processedUpdatedStock : stock));
+        setUserStock(prev => prev.map(stock => stock.id === stockId ? processedUpdatedStock : stock));
 
         toast.success('Stock item updated successfully!');
         return true;
       } else {
-        toast.error(response.error || 'Failed to update stock item');
+        // Fallback: Direct Supabase update
+        console.log('ℹ️ [StockProvider] API failed, using direct Supabase update...');
+        const { updateDocument } = await import('../../utils/firebase/firestore');
+        const success = await updateDocument('stock_items', stockId, mappedUpdates);
+        
+        if (success) {
+           // Reload or update state
+           refreshStock();
+           toast.success('Stock item updated successfully!');
+           return true;
+        }
         return false;
       }
     } catch (error) {
       console.error('Error updating stock:', error);
-
-      // Check for timeout error
-      if (error.message?.includes('timeout') || error.message?.includes('timed out')) {
-        toast.error('Request timed out. Please check your connection and try again.');
-      } else {
-        toast.error('Failed to update stock item. Please try again.');
-      }
+      toast.error('Failed to update stock item.');
       return false;
     }
   };
@@ -467,26 +611,8 @@ export function StockProvider({ children }: StockProviderProps) {
             return;
           }
 
-          const transformedStock = data.map((item: any) => ({
-            ...item,
-            dateAdded: item.created_at ? new Date(item.created_at) : new Date(),
-            supplier: item.supplier || item.company_name || 'Unknown',
-            location: item.location || 'India',
-            category: item.category || 'Apparel',
-            name: item.name || 'Unnamed Product',
-            basePrice: Number(item.base_price || item.basePrice || 0),
-            retailerPrice: Number(item.retailer_price || item.retailerPrice || 0),
-            dealerPrice: Number(item.dealer_price || item.dealerPrice || 0),
-            minOrderQuantity: Number(item.min_order_quantity || item.minOrderQuantity || 1),
-            colors: item.colors || [],
-            sizes: item.sizes || [],
-            combinations: item.combinations || [],
-            mainImages: item.main_images || item.mainImages || [],
-            status: item.status || 'active',
-            itemSetType: item.item_set_type || item.itemSetType || 'individual_flex',
-          }));
-
-          setAllStock(transformedStock as EnhancedStockItem[]);
+          const transformedStock = data.map(mapSupabaseToStock);
+          setAllStock(createDisplayReadyStock(transformedStock));
           setIsLoading(false);
           setError(null);
         },
@@ -515,15 +641,14 @@ export function StockProvider({ children }: StockProviderProps) {
 
     unsubscribe = listenToCollection(
       'stock_items',
-      [where('gst_number', '==', user.id), where('status', '==', 'active')],
+      [
+        where('seller_company', '==', user.company), 
+        where('status', '==', 'active'),
+        orderBy('created_at', 'desc')
+      ],
       (data) => {
-        const transformed = data.map((item: any) => ({
-          ...item,
-          dateAdded: item.created_at ? new Date(item.created_at) : new Date(),
-          supplier: item.supplier || 'Unknown',
-          location: item.location || 'India',
-        }));
-        setUserStock(transformed as EnhancedStockItem[]);
+        const transformed = data.map(mapSupabaseToStock);
+        setUserStock(createDisplayReadyStock(transformed));
       }
     );
 

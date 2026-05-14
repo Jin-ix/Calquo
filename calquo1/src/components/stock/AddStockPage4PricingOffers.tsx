@@ -281,7 +281,31 @@ export function AddStockPage4PricingOffers({
                   Quick Apply to All
                 </h5>
 
-                <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-7 gap-2">
+                <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-8 gap-2">
+                  <div className="space-y-0.5">
+                    <Label className="text-xs text-blue-800">Quantity</Label>
+                    <div className="flex gap-1">
+                      <Input
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={applyAllQuantity}
+                        onChange={(e) => setApplyAllQuantity(e.target.value ? parseInt(e.target.value) : '')}
+                        placeholder="Qty"
+                        className="flex-1 h-7 text-xs"
+                      />
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={handleApplyAllQuantity}
+                        className="bg-blue-600 hover:bg-blue-700 h-7 px-2 text-xs"
+                        disabled={!applyAllQuantity}
+                      >
+                        ✓
+                      </Button>
+                    </div>
+                  </div>
+
                   <div className="space-y-0.5">
                     <Label className="text-xs text-blue-800">Base Price</Label>
                     <div className="flex gap-1">
@@ -464,6 +488,12 @@ export function AddStockPage4PricingOffers({
                       <TableHead className="w-12 p-2 text-xs">#</TableHead>
                       <TableHead className="min-w-[100px] p-2 text-xs">Color</TableHead>
                       <TableHead className="w-16 p-2 text-xs">Size</TableHead>
+                      <TableHead className="w-20 p-2 text-xs bg-gray-100">
+                        <span className="flex items-center gap-0.5">
+                          <Package className="h-3 w-3" />
+                          Qty<span className="text-red-600">*</span>
+                        </span>
+                      </TableHead>
                       <TableHead className="min-w-[90px] p-2 text-xs bg-emerald-200">
                         <span className="flex items-center gap-0.5">
                           <DollarSign className="h-3 w-3" />
@@ -544,6 +574,18 @@ export function AddStockPage4PricingOffers({
                           </TableCell>
                           <TableCell className="p-2">
                             <Badge variant="outline" className="text-xs h-5">{variant.size}</Badge>
+                          </TableCell>
+                          <TableCell className="p-2">
+                            <Input
+                              type="number"
+                              min="0"
+                              step="1"
+                              value={variant.quantity ?? ''}
+                              onChange={(e) => updateVariantPrice(originalIndex, 'quantity', parseInt(e.target.value) || 0)}
+                              className={`w-full h-7 text-xs ${!variant.quantity || variant.quantity <= 0 ? 'border-red-300 focus:border-red-500' : ''}`}
+                              placeholder="Qty"
+                              required
+                            />
                           </TableCell>
                           <TableCell className="p-2">
                             <Input

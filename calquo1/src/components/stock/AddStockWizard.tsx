@@ -817,14 +817,30 @@ export function AddStockWizard({ onSubmit, onCancel, navigation, isEditing = fal
         }
       }
 
-      const allVariants = processedVariantGroups.flatMap((group: any) => group.variants);
-      const basePrice = allVariants.length > 0 ? (allVariants[0].piecePrice || 0) : parseFloat(formData.price || '0');
+      // Combine already saved variant groups and any currently active variants that haven't been 'saved' to a group yet
+      const savedVariants = processedVariantGroups.flatMap((group: any) => group.variants);
+      const allVariants = savedVariants.length > 0 ? savedVariants : variants;
+      
+      // Robust base price calculation: 
+      // 1. Try first variant from saved groups
+      // 2. Try first variant from current active variants
+      // 3. Fallback to global formData.price
+      const firstSavedPrice = savedVariants.length > 0 ? (savedVariants[0].piecePrice || 0) : 0;
+      const firstActivePrice = variants.length > 0 ? (variants[0].piecePrice || 0) : 0;
+      const globalPrice = parseFloat(formData.price || '0');
+      
+      const basePrice = firstSavedPrice > 0 ? firstSavedPrice : (firstActivePrice > 0 ? firstActivePrice : globalPrice);
+      
+      // Also sync singleShopPrice etc if they are 0 in formData but present in variants
+      const finalSingleShopPrice = parseFloat(formData.singleShopPrice) || (allVariants.length > 0 ? (allVariants[0].singleShopPrice || 0) : 0);
+      const finalMultiShopPrice = parseFloat(formData.multiShopPrice) || (allVariants.length > 0 ? (allVariants[0].multiShopPrice || 0) : 0);
+      const finalMrp = parseFloat(formData.mrp) || (allVariants.length > 0 ? (allVariants[0].mrpPerPiece || 0) : 0);
 
-      console.log('📦 [PUBLISH] Variants processed:', {
+      console.log('📦 [PUBLISH] Price & Variants processed:', {
         totalVariants: allVariants.length,
         basePrice,
-        totalQuantity: allVariants.reduce((sum: number, v: any) => sum + (v.quantity || 0), 0),
-        variantsWithImages: allVariants.filter((v: any) => v.imageUrl || (v.images && v.images.length > 0)).length
+        finalSingleShopPrice,
+        totalQuantity: allVariants.reduce((sum: number, v: any) => sum + (v.quantity || 0), 0)
       });
 
       // DEBUG: Log first few variant image URLs to confirm upload
@@ -844,9 +860,9 @@ export function AddStockWizard({ onSubmit, onCancel, navigation, isEditing = fal
         size: '', color: '',
         quantity: allVariants.reduce((sum: number, v: any) => sum + (v.quantity || 0), 0),
         price: basePrice,
-        mrp: formData.mrp ? parseFloat(formData.mrp) : undefined,
-        singleShopPrice: formData.singleShopPrice ? parseFloat(formData.singleShopPrice) : undefined,
-        multiShopPrice: formData.multiShopPrice ? parseFloat(formData.multiShopPrice) : undefined,
+        mrp: finalMrp || undefined,
+        singleShopPrice: finalSingleShopPrice || undefined,
+        multiShopPrice: finalMultiShopPrice || undefined,
         dealerPrice: formData.dealerPrice ? parseFloat(formData.dealerPrice) : undefined,
         retailerPrice: formData.retailerPrice ? parseFloat(formData.retailerPrice) : undefined,
         minOrderQuantity: parseInt(formData.minOrderQuantity || '1'),
@@ -887,42 +903,41 @@ export function AddStockWizard({ onSubmit, onCancel, navigation, isEditing = fal
         category: item.category,
         hsn_code: item.hsnCode,
         description: item.description,
-        size: item.size,
-        color: item.color,
-        quantity: item.quantity,
-        base_price: item.price || item.basePrice,
-        mrp: item.mrp,
-        single_shop_price: item.singleShopPrice,
-        multi_shop_price: item.multiShopPrice,
-        dealer_price: item.dealerPrice,
-        retailer_price: item.retailerPrice,
-        min_order_quantity: item.minOrderQuantity,
-        fabric_type: item.fabricType,
-        fabric_description: item.fabricDescription,
-        delivery_time: item.deliveryTime,
-        item_code: item.itemCode,
-        unit_of_measure: item.unitOfMeasure,
-        batch_code: item.batchCode,
-        variants: item.variants,
-        images: item.images,
-        vton_image_url: item.vtonImageUrl,
-        main_image_index: item.mainImageIndex,
-        notes: item.notes,
-        traders_only: item.tradersOnly,
-        selected_traders: item.selectedTraders,
-        has_offer: item.hasOffer,
-        offer_price: item.offerPrice,
-        offer_type: item.offerType,
-        offer_time_weeks: item.offerTimeWeeks,
-        offer_min_quantity: item.offerMinQuantity,
+        size: item.size || '',
+        color: item.color || '',
+        quantity: item.quantity || 0,
+        base_price: item.price || item.basePrice || 0,
+        mrp: item.mrp || 0,
+        single_shop_price: item.singleShopPrice || 0,
+        multi_shop_price: item.multiShopPrice || 0,
+        dealer_price: item.dealerPrice || 0,
+        retailer_price: item.retailerPrice || 0,
+        min_order_quantity: item.minOrderQuantity || 1,
+        fabric_type: item.fabricType || '',
+        fabric_description: item.fabricDescription || '',
+        delivery_time: item.deliveryTime || '',
+        item_code: item.itemCode || '',
+        unit_of_measure: item.unitOfMeasure || 'PCS',
+        batch_code: item.batchCode || '',
+        variants: item.variants || [],
+        images: item.images || [],
+        main_images: item.images || [], // Map images to main_images as well for consistency
+        vton_image_url: item.vtonImageUrl || null,
+        main_image_index: item.mainImageIndex || 0,
+        notes: item.notes || '',
+        traders_only: item.tradersOnly || false,
+        selected_traders: item.selectedTraders || [],
+        has_offer: item.hasOffer || false,
+        offer_price: item.offerPrice || 0,
+        offer_type: item.offerType || 'time',
+        offer_time_weeks: item.offerTimeWeeks || 0,
+        offer_min_quantity: item.offerMinQuantity || 0,
         supplier: user?.company || 'Demo Company',
         supplier_type: (user?.role === 'manufacturer' ? 'manufacturer' : 'trader'),
-        location: item.location,
-        unit_mode: item.unitMode,
-        bulk_selling_mode: item.bulkSellingMode,
+        location: item.location || 'India',
+        unit_mode: item.unitMode || 'individual',
+        bulk_selling_mode: item.bulkSellingMode || 'pieces',
         gst_number: user?.id || 'demo_company',
-        // seller_id & company_id are UUID columns — omit them when user has no Supabase Auth UUID
-        // identity is tracked via gst_number + seller_company
         seller_company: user?.company || 'Demo Company',
         status: 'active',
         variant_groups: processedVariantGroups.map((group: any) => ({
@@ -933,42 +948,19 @@ export function AddStockWizard({ onSubmit, onCancel, navigation, isEditing = fal
         }))
       });
 
-      let stockId: string | null = null;
+      // SUBMIT TO PROVIDER (AppMain handleAddStock or EditStockForm handleStockUpdate)
+      // The Provider's addStock/updateStock will handle the Supabase mapping centrally.
+      console.log('🚀 [WIZARD SUBMIT] stockItem:', stockItem);
+      console.log('🚀 [PUBLISH] Submitting to Provider:', stockItem.name);
       
-      // We always use the Supabase shim (addDocument/updateDocument)
-      if (isEditing && initialStock?.id) {
-        console.log('🔄 [PUBLISH] Updating existing stock:', initialStock.id);
-        const success = await updateDocument('stock_items', initialStock.id, {
-          ...mapToSupabase(stockItem),
-          updated_at: new Date().toISOString()
-        });
-        stockId = success ? initialStock.id : null;
-        console.log(success ? '✅ [PUBLISH] Update successful' : '❌ [PUBLISH] Update failed');
-      } else {
-        console.log('➕ [PUBLISH] Adding new stock item to Supabase...');
-        const itemToAdd = mapToSupabase(stockItem);
-        stockId = await addDocument('stock_items', itemToAdd);
-        console.log('📄 [PUBLISH] Document added with ID:', stockId);
-      }
+      const finalItemToSubmit = isEditing && initialStock?.id ? { id: initialStock.id, ...stockItem } : stockItem;
+      onSubmit(finalItemToSubmit);
+      
+      localStorage.removeItem('calico_add_stock_draft');
+      setShowConfirmDialog(false);
 
-      if (stockId) {
-        console.log('🎉 [PUBLISH] Success! Stock ID:', stockId);
-        toast.success(isEditing ? 'Stock item updated successfully!' : 'Stock item published successfully!');
-
-        // Ensure ID is passed back so EditStockForm's hook can update the cache
-        const finalItemToSubmit = isEditing && stockId ? { id: stockId, ...stockItem } : stockItem;
-        onSubmit(finalItemToSubmit);
-
-        localStorage.removeItem('calico_add_stock_draft');
-        setShowConfirmDialog(false);
-      } else {
-        console.error('❌ [PUBLISH] Stock insert failed — likely a Supabase RLS policy or schema mismatch. Check the console for the addDoc error above.');
-        toast.error('Failed to save stock item. Database policy blocked the insert — please check Supabase RLS on the stock_items table.', { duration: 8000 });
-        setIsSubmitting(false);
-      }
     } catch (error: any) {
       console.error('💥 [PUBLISH] Error during submission:', error);
-      console.error('Stack trace:', error?.stack);
       toast.error(error?.message || 'Error saving item. Check console for details.');
       setIsSubmitting(false);
     }

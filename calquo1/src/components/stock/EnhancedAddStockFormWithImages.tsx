@@ -21,9 +21,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import { toast } from 'sonner';
 import { getRelevantHSNCodes, getDefaultHSNCode, apparelHSNCodes } from '../../utils/hsnCodes';
 import { ImageWithFallback } from '../figma/ImageWithFallback';
-import { firebaseAuth, firebaseStorage, firebaseDb } from '../../utils/firebase/config';
+import { firebaseAuth, firebaseStorage } from '../../utils/firebase/config';
 import { ref, uploadBytes, getDownloadURL } from '../../utils/firebase/storage';
-import { collection, addDoc, serverTimestamp } from '../../utils/firebase/firestore';
+import { addDocument } from '../../utils/firebase/firestore';
 
 
 interface AddStockFormProps {
@@ -566,13 +566,13 @@ export function EnhancedAddStockFormWithImages({ onSubmit, onCancel }: AddStockF
     setIsSubmitting(true);
 
     try {
-      toast.loading('Uploading images and saving stock to Firebase...', { id: 'submit-stock' });
+      toast.loading('Uploading images and saving stock to Supabase...', { id: 'submit-stock' });
 
-      // Upload images to Firebase Storage
+      // Upload images to Supabase Storage (via shim)
       const uploadedImageUrls: string[] = [];
 
       if (productImages.length > 0) {
-        console.log(`📤 Uploading ${productImages.length} images to Firebase Storage...`);
+        console.log(`📤 Uploading ${productImages.length} images to Supabase Storage...`);
 
         for (let i = 0; i < productImages.length; i++) {
           const imageUrl = productImages[i];
@@ -603,7 +603,7 @@ export function EnhancedAddStockFormWithImages({ onSubmit, onCancel }: AddStockF
             } else {
               // Demo mode - keep original URL
               uploadedImageUrls.push(imageUrl);
-              console.warn('⚠️ Firebase Storage not initialized, using local URL');
+              console.warn('⚠️ Storage not initialized, using local URL');
             }
           } catch (uploadError) {
             console.error(`❌ Failed to upload image ${i + 1}:`, uploadError);
@@ -615,122 +615,105 @@ export function EnhancedAddStockFormWithImages({ onSubmit, onCancel }: AddStockF
 
       console.log(`✅ ${uploadedImageUrls.length} images uploaded successfully`);
 
-      // Prepare stock data for Firestore
+      // --- Map ALL fields to Supabase snake_case column names ---
+      const totalQuantity = normalizedVariants.reduce((sum, v) => sum + v.quantity, 0);
+      const firstVariant = normalizedVariants[0];
       const stockData = {
-        productName: formData.name,
+        // Basic Info
         name: formData.name,
         category: formData.category,
-        hsnCode: formData.hsnCode,
-        price: parseFloat(formData.price),
-        mrp: formData.mrp ? parseFloat(formData.mrp) : null,
-        singleShopPrice: formData.singleShopPrice ? parseFloat(formData.singleShopPrice) : null,
-        multiShopPrice: formData.multiShopPrice ? parseFloat(formData.multiShopPrice) : null,
-        minOrderQuantity: parseInt(formData.minOrderQuantity),
+        hsn_code: formData.hsnCode || '',
         description: formData.description || '',
-        fabricType: formData.fabricType || '',
-        fabricDescription: formData.fabricDescription || '',
-        deliveryTime: formData.deliveryTime || null,
-        itemCode: formData.itemCode,
-        unitOfMeasure: formData.unitOfMeasure,
-        unitMode: unitMode,
-        batchCode: formData.batchCode || null,
+
+        // Pricing — snake_case matches Supabase columns
+        base_price: formData.price ? parseFloat(formData.price) : 0,
+        mrp: formData.mrp ? parseFloat(formData.mrp) : 0,
+        single_shop_price: formData.singleShopPrice ? parseFloat(formData.singleShopPrice) : 0,
+        multi_shop_price: formData.multiShopPrice ? parseFloat(formData.multiShopPrice) : 0,
+        dealer_price: 0,
+        retailer_price: 0,
+        min_order_quantity: parseInt(formData.minOrderQuantity) || 1,
+
+        // Fabric & specs
+        fabric_type: formData.fabricType || '',
+        fabric_description: formData.fabricDescription || '',
+        delivery_time: formData.deliveryTime || '',
+        item_code: formData.itemCode || '',
+        unit_of_measure: formData.unitOfMeasure || 'PCS',
+        unit_mode: unitMode,
+        batch_code: formData.batchCode || '',
 
         // Images
-        images: uploadedImageUrls,
-        mainImageIndex: mainImageIndex,
+        images: uploadedImageUrls || [],
+        main_images: uploadedImageUrls || [],
+        main_image_index: mainImageIndex || 0,
+        vton_image_url: null,
 
-        // Variants
-        variants: normalizedVariants,
-        variantMode: variantMode,
-        quantityMode: quantityMode,
-
-        // Selling configuration
-        sellingType: sellingType,
-        tradersOnly: tradersOnly,
-        selectedTraders: tradersOnly ? selectedTraders : [],
+        // Variants (JSONB)
+        variants: normalizedVariants || [],
+        variant_groups: [], // Standardized as empty for this form
 
         // Offers
-        hasOffer: hasOffer,
-        offerPrice: hasOffer ? parseFloat(offerData.offerPrice) : null,
-        offerType: hasOffer ? offerData.offerType : null,
-        offerTimeWeeks: hasOffer && offerData.offerType === 'time' ? parseInt(offerData.offerTimeWeeks) : null,
-        offerMinQuantity: hasOffer && offerData.offerType === 'quantity' ? parseInt(offerData.offerMinQuantity) : null,
+        has_offer: hasOffer,
+        offer_price: hasOffer && offerData.offerPrice ? parseFloat(offerData.offerPrice) : 0,
+        offer_type: offerData.offerType || 'time',
+        offer_time_weeks: hasOffer && offerData.offerType === 'time' && offerData.offerTimeWeeks
+          ? parseInt(offerData.offerTimeWeeks) : 0,
+        offer_min_quantity: hasOffer && offerData.offerType === 'quantity' && offerData.offerMinQuantity
+          ? parseInt(offerData.offerMinQuantity) : 0,
 
-        // Metadata
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-        updatedBy: user.id,
+        // Trader config
+        traders_only: tradersOnly,
+        selected_traders: tradersOnly ? selectedTraders : [],
+
+        // Legacy single-value compat columns
+        color: firstVariant
+          ? (firstVariant.colorOrPattern?.type === 'color'
+              ? firstVariant.colorOrPattern.value
+              : firstVariant.color || '')
+          : '',
+        size: firstVariant?.size || '',
+        quantity: totalQuantity || 0,
+
+        // Seller metadata
         supplier: user.company || 'Unknown',
-        supplierEmail: user.email,
-        supplierRole: user.role,
-        userId: user.id,
-        sellerId: user.id, // CRITICAL: Required for purchase requests and my-stock query
-
-        // For compatibility with existing stock items
-        color: normalizedVariants.length > 0 ? (normalizedVariants[0].colorOrPattern?.type === 'color' ? normalizedVariants[0].colorOrPattern.value : normalizedVariants[0].color || 'Default') : 'Default',
-        size: normalizedVariants.length > 0 ? normalizedVariants[0].size : 'One Size',
-        quantity: normalizedVariants.reduce((sum, v) => sum + v.quantity, 0),
-        supplierType: user.role === 'manufacturer' ? 'manufacturer' : 'trader'
+        supplier_type: user.role === 'manufacturer' ? 'manufacturer' : 'trader',
+        location: user.profile?.address?.city || 'India',
+        gst_number: user.id || '',
+        seller_company: user.company || 'Unknown',
+        status: 'active',
       };
 
-      // Save to Firestore
-      if (firebaseDb) {
-        console.log('📝 Saving stock to Firestore...', stockData);
-        // Use 'stock_items' collection to match existing data structure
-        const docRef = await addDoc(collection(firebaseDb, 'stock_items'), stockData);
-        console.log('✅ Stock saved to Firestore with ID:', docRef.id);
-
-        // Call the original onSubmit callback (for any local state updates)
-        onSubmit({ ...preparedStockItem, images: uploadedImageUrls });
-
-        toast.success(`Stock added successfully! ID: ${docRef.id}`, {
-          id: 'submit-stock',
-          description: `${uploadedImageUrls.length} images uploaded, saved to Firebase.`
-        });
-
-        // Clear the form after successful submission
-        setFormData({
-          name: '',
-          category: '',
-          hsnCode: '',
-          price: '',
-          mrp: '',
-          singleShopPrice: '',
-          multiShopPrice: '',
-          minOrderQuantity: '',
-          description: '',
-          fabricType: '',
-          fabricDescription: '',
-          deliveryTime: '',
-          itemCode: '',
-          unitOfMeasure: 'PCS',
-          batchCode: ''
-        });
-        setProductImages([]);
-        setMainImageIndex(0);
-        setColorFirstVariants([{ colorOrPattern: { type: 'color', value: '#FF6B6B', name: 'Color #FF6B6B' }, sizes: [], quantity: 0 }]);
-        setSizeFirstVariants([{ size: '', colorOrPatterns: [], colors: [], quantity: 0 }]);
-        setMixedVariants([{ colorOrPattern: { type: 'color', value: '#4ECDC4', name: 'Color #4ECDC4' }, size: '', quantity: 0 }]);
-        setIsReviewMode(false);
-        setPreparedStockItem(null);
-        setHasOffer(false);
-
-      } else {
-        // Demo mode fallback
-        console.warn('⚠️ Firebase not initialized - using demo mode');
-        onSubmit({ ...preparedStockItem, images: uploadedImageUrls });
-        toast.success('Stock item added (Demo Mode)', {
-          id: 'submit-stock',
-          description: 'Configure Firebase credentials to save to database.'
-        });
-      }
+      // Hand off to provider for persistence
+      console.log('🚀 [ENHANCED SUBMIT] Handing off to Provider:', stockData.name);
+      onSubmit(stockData);
+      
+      toast.success('Stock item submitted successfully!');
+      
+      // Reset form
+      setFormData({
+        name: '', category: '', hsnCode: '', price: '', mrp: '',
+        singleShopPrice: '', multiShopPrice: '', minOrderQuantity: '',
+        description: '', fabricType: '', fabricDescription: '',
+        deliveryTime: '', itemCode: '', unitOfMeasure: 'PCS', batchCode: ''
+      });
+      setProductImages([]);
+      setMainImageIndex(0);
+      setColorFirstVariants([{ colorOrPattern: { type: 'color', value: '#FF6B6B', name: 'Color #FF6B6B' }, sizes: [], quantity: 0 }]);
+      setSizeFirstVariants([{ size: '', colorOrPatterns: [], colors: [], quantity: 0 }]);
+      setMixedVariants([{ colorOrPattern: { type: 'color', value: '#4ECDC4', name: 'Color #4ECDC4' }, size: '', quantity: 0 }]);
+      setIsReviewMode(false);
+      setPreparedStockItem(null);
+      setHasOffer(false);
+      
+      if (onCancel) onCancel();
 
     } catch (error) {
       console.error('❌ Error submitting stock:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
       toast.error('Failed to submit stock item.', {
         id: 'submit-stock',
-        description: `Error: ${errorMessage}. Please try again or contact support.`
+        description: `Error: ${errorMessage}. Please try again.`,
       });
     } finally {
       setIsSubmitting(false);
@@ -1367,12 +1350,12 @@ export function EnhancedAddStockFormWithImages({ onSubmit, onCancel }: AddStockF
                 {isSubmitting ? (
                   <>
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Saving to Firebase...
+                    Saving to Supabase...
                   </>
                 ) : (
                   <>
                     <CheckCircle className="h-4 w-4 mr-2" />
-                    Submit to Firebase
+                    Submit to Supabase
                   </>
                 )}
               </Button>
