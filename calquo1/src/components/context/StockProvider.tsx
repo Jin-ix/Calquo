@@ -66,6 +66,58 @@ export function StockProvider({ children }: StockProviderProps) {
       return isNaN(parsed) ? 0 : parsed;
     };
 
+    // RECONSTRUCTION: Extract colors, sizes, and combinations from variants
+    const variants = dbItem.variants || [];
+    const colorsMap: Record<string, any> = {};
+    const sizesMap: Record<string, any> = {};
+    const combinations: any[] = [];
+
+    if (Array.isArray(variants)) {
+      variants.forEach((v: any, idx: number) => {
+        const colorName = v.colorOrPattern?.name || 'Default';
+        const colorValue = v.colorOrPattern?.value || '#000000';
+        const colorId = `color-${colorName.toLowerCase().replace(/\s+/g, '-')}`;
+        
+        if (!colorsMap[colorId]) {
+          colorsMap[colorId] = {
+            id: colorId,
+            name: colorName,
+            colorCode: v.colorOrPattern?.type === 'color' ? colorValue : undefined,
+            patternImage: v.colorOrPattern?.type === 'pattern' ? colorValue : (v.imageUrl || v.images?.[0]),
+            images: v.images || (v.imageUrl ? [v.imageUrl] : []),
+            definition: { hasColorPicker: v.colorOrPattern?.type === 'color', hasImage: !!v.imageUrl, hasName: true }
+          };
+        } else if (v.imageUrl || (v.images && v.images.length > 0)) {
+           // Add unique images to color
+           const existingImgs = colorsMap[colorId].images;
+           const newImgs = v.images || (v.imageUrl ? [v.imageUrl] : []);
+           colorsMap[colorId].images = Array.from(new Set([...existingImgs, ...newImgs]));
+        }
+
+        const sizeName = v.size || 'One Size';
+        const sizeId = `size-${sizeName.toLowerCase().replace(/\s+/g, '-')}`;
+        if (!sizesMap[sizeId]) {
+          sizesMap[sizeId] = { id: sizeId, name: sizeName, displayName: sizeName };
+        }
+
+        combinations.push({
+          id: `combo-${idx}`,
+          colorId: colorId,
+          sizeId: sizeId,
+          quantity: parseInt(v.quantity) || 0,
+          availableQuantity: parseInt(v.quantity) || 0,
+          piecePrice: parseFloat(v.piecePrice) || parseNum(dbItem.base_price),
+          mrpPerPiece: parseFloat(v.mrpPerPiece) || parseNum(dbItem.mrp),
+          singleShopPrice: parseFloat(v.singleShopPrice) || parseNum(dbItem.single_shop_price),
+          multiShopPrice: parseFloat(v.multiShopPrice) || parseNum(dbItem.multi_shop_price),
+          dealerPrice: parseFloat(v.dealerPrice) || parseNum(dbItem.dealer_price),
+          retailerPrice: parseFloat(v.retailerPrice) || parseNum(dbItem.retailer_price),
+          offerPrice: parseFloat(v.offerPrice) || parseNum(dbItem.offer_price),
+          images: v.images || (v.imageUrl ? [v.imageUrl] : [])
+        });
+      });
+    }
+
     return {
       ...dbItem,
       id: dbItem.id,
@@ -91,11 +143,11 @@ export function StockProvider({ children }: StockProviderProps) {
       unitOfMeasure: dbItem.unit_of_measure || 'PCS',
       batchCode: dbItem.batch_code,
       itemSetType: dbItem.item_set_type || 'individual_flex',
-      variants: dbItem.variants || [],
+      variants: variants,
       variantGroups: dbItem.variant_groups || [],
-      combinations: dbItem.combinations || [],
-      colors: dbItem.colors || [],
-      sizes: dbItem.sizes || [],
+      combinations: combinations.length > 0 ? combinations : (dbItem.combinations || []),
+      colors: Object.values(colorsMap).length > 0 ? Object.values(colorsMap) : (dbItem.colors || []),
+      sizes: Object.values(sizesMap).length > 0 ? Object.values(sizesMap) : (dbItem.sizes || []),
       images: dbItem.images || [],
       productImages: dbItem.images || [],
       mainImages: dbItem.images || [],
@@ -318,11 +370,10 @@ export function StockProvider({ children }: StockProviderProps) {
 
   // Helper to map stock data to Supabase snake_case
   const mapStockToSupabase = (item: any) => {
-    console.log('🔍 [StockProvider] Mapping item to Supabase. Source price:', item.price, 'Source qty:', item.quantity);
+    console.log('🔍 [StockProvider] Mapping item to Supabase. Source:', item.name, 'Price:', item.price, 'Qty:', item.quantity);
     const mapped: any = {};
     
-    // Mapping rules: if camelCase exists, map to snake_case. 
-    // If snake_case already exists, keep it.
+    // Explicit mapping to ensure backend compatibility
     const mapping: Record<string, string | string[]> = {
       name: 'name',
       category: 'category',
@@ -339,7 +390,6 @@ export function StockProvider({ children }: StockProviderProps) {
       singleShopPrice: 'single_shop_price',
       multiShopPrice: 'multi_shop_price',
       dealerPrice: 'dealer_price',
-      retailer_price: 'retailer_price', // Handle already mapped
       retailerPrice: 'retailer_price',
       minOrderQuantity: 'min_order_quantity',
       fabricType: 'fabric_type',
@@ -351,12 +401,8 @@ export function StockProvider({ children }: StockProviderProps) {
       itemSetType: 'item_set_type',
       variants: 'variants',
       variantGroups: 'variant_groups',
-      variant_groups: 'variant_groups',
-      combinations: 'combinations',
-      colors: 'colors',
-      sizes: 'sizes',
-      images: ['images', 'main_images'],
-      productImages: ['images', 'main_images'],
+      images: 'images',
+      productImages: 'images',
       vtonImageUrl: 'vton_image_url',
       mainImageIndex: 'main_image_index',
       notes: 'notes',
@@ -368,13 +414,38 @@ export function StockProvider({ children }: StockProviderProps) {
       offerTimeWeeks: 'offer_time_weeks',
       offerMinQuantity: 'offer_min_quantity',
       supplier: ['supplier', 'seller_company'],
+      seller_company: 'seller_company',
+      sellerId: 'seller_id',
       supplierType: 'supplier_type',
       location: 'location',
       unitMode: 'unit_mode',
       bulkSellingMode: 'bulk_selling_mode',
       status: 'status',
-      gstNumber: 'gst_number'
+      gstNumber: 'gst_number',
+      // Include reconstructed fields for local state consistency
+      combinations: 'combinations',
+      colors: 'colors',
+      sizes: 'sizes'
     };
+
+    // Numeric fields that must be cast to Float/Int for PostgreSQL
+    const numericFields = [
+      'price', 'basePrice', 'base_price', 'piecePrice', 
+      'mrp', 'mrpPerPiece', 'mrp_per_piece',
+      'singleShopPrice', 'single_shop_price',
+      'multiShopPrice', 'multi_shop_price',
+      'dealerPrice', 'dealer_price',
+      'retailerPrice', 'retailer_price',
+      'offerPrice', 'offer_price',
+      'quantity', 'available_quantity', 'availableQuantity',
+      'minOrderQuantity', 'min_order_quantity',
+      'stock', 'stock_count'
+    ];
+
+    // UUID validation - Supabase uuid columns reject non-UUID strings with a 400 error
+    const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    const isValidUUID = (val: any) => typeof val === 'string' && UUID_REGEX.test(val);
+    const UUID_FIELDS = ['id', 'user_id', 'seller_id', 'buyer_id', 'financial_agent_id', 'company_id', 'created_by', 'sellerId'];
 
     // Apply mapping
     Object.keys(item).forEach(key => {
@@ -382,14 +453,22 @@ export function StockProvider({ children }: StockProviderProps) {
       let value = item[key];
       
       // Convert numeric fields if they are strings or falsy
-      if (['price', 'basePrice', 'piecePrice', 'mrp', 'mrpPerPiece', 'singleShopPrice', 'multiShopPrice', 'dealerPrice', 'retailerPrice', 'retailer_price', 'offerPrice', 'quantity', 'minOrderQuantity'].includes(key)) {
+      if (numericFields.includes(key)) {
         if (value === null || value === undefined || value === '') {
           value = 0;
         } else if (typeof value === 'string') {
-          const parsed = parseFloat(value);
+          const parsed = parseFloat(value.replace(/[^0-9.-]/g, ''));
           value = isNaN(parsed) ? 0 : parsed;
         } else if (typeof value === 'number' && isNaN(value)) {
           value = 0;
+        }
+      }
+
+      // Handle UUID fields - strip if not valid format
+      if (UUID_FIELDS.includes(key) || (typeof target === 'string' && UUID_FIELDS.includes(target))) {
+        if (value && !isValidUUID(value)) {
+          console.warn(`⚠️ [StockProvider] Stripping non-UUID value from ${key}:`, value);
+          value = undefined; // Strip invalid UUID to prevent Supabase 400 error
         }
       }
 
@@ -399,95 +478,117 @@ export function StockProvider({ children }: StockProviderProps) {
         } else {
           mapped[target] = value;
         }
-      } else {
-        // Keep unknown keys as is (might be already snake_case)
+      } else if (key.includes('_')) {
+        // Keep already snake_case keys as is, but still apply numeric casting and UUID check
         mapped[key] = value;
       }
     });
 
-    // Special handling for nested offerData from AppMain
-    if (item.offerData) {
-      if (item.offerData.offerPrice) mapped.offer_price = parseFloat(item.offerData.offerPrice) || 0;
-      if (item.offerData.offerType) mapped.offer_type = item.offerData.offerType;
-      if (item.offerData.offerTimeWeeks) mapped.offer_time_weeks = parseInt(item.offerData.offerTimeWeeks) || null;
-      if (item.offerData.offerMinQuantity) mapped.offer_min_quantity = parseInt(item.offerData.offerMinQuantity) || null;
-    }
-
-    // Defaults for mandatory-ish fields
-    if (mapped.quantity === undefined || mapped.quantity === null || isNaN(mapped.quantity)) {
-      mapped.quantity = 0;
-    }
-    if (typeof mapped.quantity === 'string') {
-      mapped.quantity = parseInt(mapped.quantity) || 0;
-    }
+    // CRITICAL: Ensure seller_company is set (this is used for filtering in My Stock)
+    mapped.seller_company = item.seller_company || item.supplier || user?.company || 'Demo Company';
+    if (!mapped.supplier) mapped.supplier = mapped.seller_company;
 
     // FALLBACK LOGIC: If base_price is 0 or missing, try to steal it from other pricing fields
     const priceFields = ['base_price', 'single_shop_price', 'multi_shop_price', 'retailer_price', 'dealer_price'];
-    let finalBasePrice = 0;
-    for (const field of priceFields) {
-      const val = parseFloat(mapped[field]);
-      if (!isNaN(val) && val > 0) {
-        finalBasePrice = val;
-        break;
+    if (!mapped.base_price || mapped.base_price === 0) {
+      for (const field of priceFields) {
+        const val = parseFloat(mapped[field]);
+        if (!isNaN(val) && val > 0) {
+          mapped.base_price = val;
+          break;
+        }
       }
     }
-    mapped.base_price = finalBasePrice;
     
+    // Ensure all variants have numeric pricing/quantity
+    if (mapped.variants && Array.isArray(mapped.variants)) {
+      mapped.variants = mapped.variants.map((v: any) => ({
+        ...v,
+        quantity: parseInt(v.quantity) || 0,
+        piecePrice: parseFloat(v.piecePrice) || 0,
+        mrpPerPiece: parseFloat(v.mrpPerPiece) || 0,
+        singleShopPrice: parseFloat(v.singleShopPrice) || 0,
+        multiShopPrice: parseFloat(v.multiShopPrice) || 0,
+        dealerPrice: parseFloat(v.dealerPrice) || 0,
+        retailerPrice: parseFloat(v.retailerPrice) || 0,
+        offerPrice: parseFloat(v.offerPrice) || 0
+      }));
+    }
+
     if (mapped.status === undefined) mapped.status = 'active';
     
-    console.log('✅ [StockProvider] Mapping complete. Final base_price:', mapped.base_price, 'Final quantity:', mapped.quantity);
+    console.log('✅ [StockProvider] Mapping complete. Resulting payload:', {
+      name: mapped.name,
+      price: mapped.base_price,
+      qty: mapped.quantity,
+      seller: mapped.seller_company
+    });
     return mapped;
   };
 
   // Add new stock item
+  // Add new stock item
   const addStock = async (stockData: any): Promise<boolean> => {
     try {
-      console.log('📦 [StockProvider] Adding stock item:', stockData.name);
+      console.log('📦 [StockProvider] Starting addStock for:', stockData.name);
       
       const supabasePayload = mapStockToSupabase(stockData);
-      console.log('🚀 [StockProvider] Final Supabase Payload:', JSON.stringify(supabasePayload, null, 2));
+      
+      // Remove any ID that might have been passed to let Supabase generate a UUID
+      delete supabasePayload.id;
 
-      // Attempt via API first
-      console.log('📡 [StockProvider] Calling stockAPI.addStock...');
-      const response = await stockAPI.addStock(supabasePayload);
-      console.log('📥 [StockProvider] API Response:', response);
+      console.log('🚀 [StockProvider] Inserting into Supabase...', supabasePayload.name);
+      
+      // Direct Supabase insert
+      const { data: res, error: dbError } = await supabase
+        .from('stock_items')
+        .insert([{
+          ...supabasePayload,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        }])
+        .select()
+        .single();
 
-      if (response.success) {
-        const rawNewStock = response.stock || supabasePayload;
-        const processedNewStock = createDisplayReadyStock([rawNewStock])[0];
-
-        if (processedNewStock) {
-          setAllStock(prev => [processedNewStock, ...prev]);
-          if (user?.company === processedNewStock.supplier) {
-            setUserStock(prev => [processedNewStock, ...prev]);
-          }
-        }
-
-        toast.success('Stock item added successfully!');
-        return true;
-      } else {
-        // Direct Supabase insert fallback
-        console.log('ℹ️ [StockProvider] API failed, using direct Supabase insert...');
-        const newId = await addDocument('stock_items', supabasePayload);
-        console.log('🆔 [StockProvider] Direct insert result (newId):', newId);
+      if (dbError) {
+        console.error('❌ [StockProvider] Supabase Insert Error:', dbError.message, dbError.details);
         
-        if (newId) {
-          const fallbackStock = { ...supabasePayload, id: newId };
-          const processedFallback = createDisplayReadyStock([fallbackStock])[0];
-          
-          setAllStock(prev => [processedFallback, ...prev]);
-          if (user?.company === processedFallback.supplier) {
-            setUserStock(prev => [processedFallback, ...prev]);
-          }
-          
-          toast.success('Stock item added successfully!');
+        // Fallback to API if direct insert failed
+        console.warn('⚠️ [StockProvider] Direct insert failed, trying API fallback...');
+        const response = await stockAPI.addStock(supabasePayload);
+        
+        if (response.success) {
+          console.log('✅ [StockProvider] Fallback API success');
+          await refreshStock();
+          toast.success('Product published successfully!');
           return true;
         }
-        return false;
+        
+        throw new Error(dbError.message);
       }
-    } catch (error) {
-      console.error('Error adding stock:', error);
-      toast.error('Failed to add stock item.');
+
+      if (res) {
+        console.log('✅ [StockProvider] Item inserted with ID:', res.id);
+        
+        // Update local state for immediate UI feedback
+        const mappedItem = mapSupabaseToStock(res);
+        const displayReady = createDisplayReadyStock([mappedItem])[0];
+        
+        if (displayReady) {
+          setAllStock(prev => [displayReady, ...prev]);
+          if (user?.company === displayReady.supplier) {
+            setUserStock(prev => [displayReady, ...prev]);
+          }
+        }
+        
+        toast.success('Product published successfully!');
+        return true;
+      }
+
+      return false;
+    } catch (error: any) {
+      console.error('💥 [StockProvider] Fatal error adding stock:', error);
+      toast.error(`Error publishing product: ${error.message || 'Check console'}`);
       return false;
     }
   };
@@ -498,38 +599,38 @@ export function StockProvider({ children }: StockProviderProps) {
       console.log('🔄 [StockProvider] Updating stock item:', stockId);
       const mappedUpdates = mapStockToSupabase(updates);
       
-      const response = await stockAPI.updateStock(stockId, mappedUpdates);
+      // Attempt direct Supabase update first
+      const { updateDocument: directUpdate } = await import('../../utils/firebase/firestore');
+      const success = await directUpdate('stock_items', stockId, mappedUpdates);
 
-      if (response.success) {
-        const rawUpdatedStock = response.stock || { ...updates, id: stockId };
-        const processedUpdatedStock = createDisplayReadyStock([rawUpdatedStock])[0];
-
-        setAllStock(prev => prev.map(stock => stock.id === stockId ? processedUpdatedStock : stock));
-        setUserStock(prev => prev.map(stock => stock.id === stockId ? processedUpdatedStock : stock));
-
-        toast.success('Stock item updated successfully!');
+      if (success) {
+        console.log('✅ [StockProvider] Item updated successfully');
+        
+        // Refresh local state (simplest way to ensure all derived data is correct)
+        await refreshStock();
+        
+        toast.success('Product updated successfully!');
         return true;
       } else {
-        // Fallback: Direct Supabase update
-        console.log('ℹ️ [StockProvider] API failed, using direct Supabase update...');
-        const { updateDocument } = await import('../../utils/firebase/firestore');
-        const success = await updateDocument('stock_items', stockId, mappedUpdates);
+        // Fallback to API
+        console.warn('⚠️ [StockProvider] Direct update failed, trying API fallback...');
+        const response = await stockAPI.updateStock(stockId, mappedUpdates);
         
-        if (success) {
-           // Reload or update state
-           refreshStock();
-           toast.success('Stock item updated successfully!');
-           return true;
+        if (response.success) {
+          refreshStock();
+          toast.success('Product updated successfully!');
+          return true;
         }
-        return false;
       }
+
+      toast.error('Failed to update product in database.');
+      return false;
     } catch (error) {
-      console.error('Error updating stock:', error);
-      toast.error('Failed to update stock item.');
+      console.error('💥 [StockProvider] Fatal error updating stock:', error);
+      toast.error('Error updating product. Check console.');
       return false;
     }
   };
-
   // Delete stock item
   const deleteStock = async (stockId: string): Promise<boolean> => {
     try {

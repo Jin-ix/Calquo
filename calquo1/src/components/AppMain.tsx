@@ -1660,109 +1660,25 @@ export function AppMain({ user }: AppMainProps) {
   }, [user?.role]);
 
   // Handler functions
-  const handleAddStock = useCallback(async (newStock: Omit<StockItem, 'id' | 'dateAdded'>) => {
+  const handleAddStock = useCallback(async (newStock: any) => {
     try {
-      // Transform StockItem to Enhanced Stock format for backend
-      const transformedStockData = {
-        name: newStock.name,
-        category: newStock.category,
-        supplier: user?.company || newStock.supplier,
-        basePrice: newStock.price,
-        description: newStock.description,
-        itemSetType: 'individual_flex', // Default for simple stock items
-        minOrderQuantity: newStock.minOrderQuantity,
-        singleShopPrice: newStock.singleShopPrice,
-        multiShopPrice: newStock.multiShopPrice,
-        fabricType: newStock.fabricType,
-        fabricDescription: newStock.fabricDescription,
-        deliveryTime: newStock.deliveryTime,
-        tradersOnly: newStock.tradersOnly || false,
-        location: newStock.location || (user?.profile?.address ?
-          `${user.profile.address.city}, ${user.profile.address.state}` : 'Location not available'),
-        productImages: newStock.images || [],
-
-        // Create colors and sizes arrays
-        colors: newStock.variants ?
-          Array.from(new Set(newStock.variants.map(v => v.color))).map(color => ({
-            id: `color-${(color || 'default').toLowerCase().replace(/[^a-zA-Z0-9]/g, '-')}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-            name: color,
-            images: newStock.variants?.filter(v => v.color === color && v.imageUrl)
-              .map(v => v.imageUrl!).filter(Boolean) || [],
-            definition: { hasColorPicker: false, hasImage: false, hasName: true }
-          })) : [{
-            id: newStock.color?.toLowerCase().replace(/\s+/g, '-') || 'default',
-            name: newStock.color || 'Default',
-            images: [],
-            definition: { hasColorPicker: false, hasImage: false, hasName: true }
-          }],
-
-        sizes: newStock.variants ?
-          Array.from(new Set(newStock.variants.map(v => v.size))).map(size => ({
-            id: (size || 'one-size').toLowerCase().replace(/\s+/g, '-'),
-            name: size,
-            displayName: size
-          })) : [{
-            id: newStock.size?.toLowerCase().replace(/\s+/g, '-') || 'one-size',
-            name: newStock.size || 'One Size',
-            displayName: newStock.size || 'One Size'
-          }],
-
-        // Create combinations from variants or single color/size
-        combinations: newStock.variants ? newStock.variants.map((variant, index) => ({
-          id: `${`combo-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`}-${variant.size || 'one-size'}-${index}`.toLowerCase().replace(/\s+/g, '-'),
-          colorId: `color-${Date.now()}-${index}`.toLowerCase().replace(/\s+/g, '-'),
-          sizeId: `size-${(variant.size || 'one-size').replace(/[^a-zA-Z0-9]/g, '-').toLowerCase()}-${index}`.replace(/\s+/g, '-'),
-          quantity: variant.quantity,
-          availableQuantity: variant.quantity,
-          images: variant.imageUrl ? [variant.imageUrl] : []
-        })) : [{
-          id: `single-combo-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`.toLowerCase().replace(/\s+/g, '-'),
-          colorId: `single-color-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-          sizeId: `single-size-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-          quantity: newStock.quantity,
-          availableQuantity: newStock.quantity,
-          images: []
-        }],
-
-        // Set additional enhanced stock properties
-        flexibleSelectionAllowed: true,
-
-        // Handle offer data if present
-        hasOffer: newStock.offerPrice && newStock.offerPrice > 0,
-        ...(newStock.offerPrice && newStock.offerPrice > 0 && {
-          offerData: {
-            offerPrice: newStock.offerPrice,
-            offerType: newStock.offerType || 'time',
-            offerTimeWeeks: newStock.offerTimeWeeks,
-            offerMinQuantity: newStock.offerMinQuantity,
-            offerValidUntil: newStock.offerValidUntil,
-            offerCreatedDate: newStock.offerCreatedDate
-          }
-        })
-      };
-
+      console.log('🚀 [AppMain] Submitting stock to Provider:', newStock.name);
+      
       // Use StockProvider's addStock method to save to backend
-      const success = await addStock(transformedStockData);
+      // The StockProvider centrally handles mapping to Supabase (snake_case, numeric casting, etc.)
+      const success = await addStock(newStock);
 
       if (success) {
-        // Also add to local state for immediate UI update (StockProvider should handle this)
-        const stock: StockItem = {
-          ...newStock,
-          id: Math.random().toString(36).substr(2, 9),
-          dateAdded: new Date().toISOString()
-        };
-        setStocks(prev => [stock, ...prev]);
-
         setActiveView('my-stock');
-        toast.success('Stock item added successfully and saved to database!');
+        toast.success('Stock item published successfully!');
       } else {
-        toast.error('Failed to save stock item to database. Please try again.');
+        toast.error('Failed to publish stock. Please check your data.');
       }
     } catch (error) {
       console.error('Error adding stock:', error);
-      toast.error('Failed to add stock item. Please check your connection and try again.');
+      toast.error('Failed to add stock item. Please try again.');
     }
-  }, [addStock, user]);
+  }, [addStock]);
 
   const handleDeleteStock = useCallback(async (stockId: string) => {
     // Add confirmation dialog

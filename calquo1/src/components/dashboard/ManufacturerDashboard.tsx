@@ -33,7 +33,7 @@ import {
 import { useLanguage } from '../context/LanguageProvider';
 import { useAuth } from '../auth/AuthProvider';
 import { myStockList } from '../../utils/mockData';
-import { EnhancedAddStockFormWithImages } from '../stock/EnhancedAddStockFormWithImages';
+import { AddStockWizard } from '../stock/AddStockWizard';
 import { MyStockView } from '../views/MyStockView';
 import { toast } from 'sonner';
 import { UnifiedOrderManagement } from '../orders/UnifiedOrderManagement';
@@ -273,344 +273,254 @@ export function ManufacturerDashboard({ initialTab = 'home' }: ManufacturerDashb
   const [stats, setStats] = useState(mockManufacturerStats);
    const [expandedMetric, setExpandedMetric] = useState<string | null>(null); // Added for Bento Morphing
   const [stockToEdit, setStockToEdit] = useState<any | null>(null);
-  const { addStock } = useStock();
+  const { stocks: allStocks, deleteStock, addStock } = useStock();
 
-  const { scrollY } = useScroll();
-  const headerFontWeight = useTransform(scrollY, [0, 300], [800, 400]);
-
-  // Simulate live data updates
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setStats(current => ({
-        ...current,
-        activeOrders: current.activeOrders + (Math.random() > 0.6 ? 1 : 0),
-        monthlyRevenue: current.monthlyRevenue + Math.floor(Math.random() * 5000),
-        productionCapacity: Math.min(100, Math.max(0, current.productionCapacity + (Math.floor(Math.random() * 3) - 1))),
-        totalProducts: current.totalProducts + (Math.random() > 0.85 ? 1 : 0)
-      }));
-    }, 4500);
-    return () => clearInterval(interval);
-  }, []);
+  // Handle stock submission from Wizard
+  const handleWizardSubmit = async (stockItem: any) => {
+    try {
+      console.log('🏗️ ManufacturerDashboard: Submitting stock via Wizard...', stockItem.name);
+      await addStock(stockItem);
+      toast.success('Product published successfully!');
+      setActiveTab('my-stock'); // Redirect to my stock view
+    } catch (error) {
+      console.error('ManufacturerDashboard: Wizard submission failed:', error);
+      toast.error('Failed to publish product');
+    }
+  };
 
   const formatCurrency = (amount: number) => {
     return `₹${amount.toLocaleString('en-IN')}`;
   };
 
-  const getStatusBadge = (status: string) => {
-    const statusConfig = {
-      in_production: { label: 'In Production', variant: 'default' as const, color: 'text-blue-600' },
-      quality_check: { label: 'Quality Check', variant: 'secondary' as const, color: 'text-yellow-600' },
-      packaging: { label: 'Packaging', variant: 'outline' as const, color: 'text-green-600' },
-      shipped: { label: 'Shipped', variant: 'default' as const, color: 'text-purple-600' },
-      review: { label: 'Under Review', variant: 'secondary' as const, color: 'text-orange-600' },
-      quoted: { label: 'Quote Sent', variant: 'outline' as const, color: 'text-blue-600' }
-    };
-
-    const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.review;
-    return (
-      <Badge variant={config.variant} className={config.color}>
-        {config.label}
-      </Badge>
-    );
-  };
-
-  const getPriorityBadge = (priority: string) => {
-    switch (priority) {
-      case 'High':
-        return <Badge variant="destructive">High Priority</Badge>;
-      case 'Medium':
-        return <Badge variant="secondary">Medium</Badge>;
-      case 'Low':
-        return <Badge variant="outline">Low</Badge>;
-      default:
-        return <Badge variant="outline">{priority}</Badge>;
-    }
-  };
-
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-      className="max-w-7xl mx-auto w-full px-4 py-6 md:p-8 space-y-8 bg-[#FAFAFA] min-h-screen"
-    >
-      {/* Decor handled by ParallaxWrapper below instead of fixed div */}
-
-      {/* Hero Parallax Section */}
-      {
-        activeTab === 'home' && (
-          <ParallaxWrapper
-            backgroundImageUrl="https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=2564&auto=format&fit=crop"
-            height="40vh"
-            className="rounded-none md:rounded-sm mb-8 border border-[#E5E5E5] bg-zinc-950 overflow-hidden"
-            overlayOpacity={0.6}
-            scrimGradient="linear-gradient(to right, rgba(9,9,11,0.9), rgba(9,9,11,0.7))"
-          >
-            <div className="flex flex-col items-center justify-center text-center space-y-4 pt-10 relative z-10">
-              <motion.h1 style={{ y: 0 }} className="text-4xl md:text-5xl font-heading drop-shadow-sm flex justify-center gap-3 pt-2 text-white">
-                {["Manufacturer", "Portal"].map((word, i) => (
-                  <div key={word} className="mask-text-up overflow-hidden pb-2">
-                    <motion.span
-                      initial={{ y: "100%" }}
-                      animate={{ y: 0 }}
-                      transition={{ duration: 0.8, delay: 0.2 + (i * 0.15), ease: [0.16, 1, 0.3, 1] }}
-                      className={`inline-block font-[800] tracking-[-0.02em] bg-[linear-gradient(135deg,#ffffff_0%,#c3a343_100%)] bg-clip-text text-transparent ${i === 1 ? "italic font-light tracking-normal" : ""}`}
-                    >
-                      {word}
-                    </motion.span>
-                  </div>
-                ))}
-              </motion.h1>
-              <p className="text-white/80 max-w-2xl text-lg font-light">
-                Manage your production, oversee orders, and track revenue seamlessly.
-              </p>
-              {user && (
-                <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
-                  {/* Company name badge - high contrast solid style */}
-                  <div className="bg-zinc-900/80 backdrop-blur-md border border-amber-400/50 px-5 py-2.5 rounded-full flex items-center gap-2.5 shadow-lg">
-                    <Building className="h-4 w-4 text-amber-400" />
-                    <span className="font-bold tracking-wide text-white text-sm">{user.company}</span>
-                  </div>
-                  {/* Verified badge - clear green with check icon */}
-                  <div className="bg-emerald-500 px-5 py-2.5 rounded-full flex items-center gap-2 shadow-md">
-                    <CheckCircle className="h-4 w-4 text-white" />
-                    <span className="text-sm font-bold tracking-widest uppercase text-white">Verified Manufacturer</span>
-                  </div>
-                </div>
-              )}
-            </div>
-          </ParallaxWrapper>
-        )
-      }
-
-      {
-        activeTab === 'home' && (
+    <div className="min-h-screen bg-[#F8F9FA] text-slate-900 pb-20 font-sans selection:bg-orange-100 selection:text-orange-900 overflow-x-hidden">
+      {/* Modern Header Section */}
+      <header className="relative bg-white border-b border-slate-100 px-6 py-8 z-10 overflow-hidden">
+        <div className="absolute top-0 right-0 w-[40%] h-full bg-gradient-to-l from-orange-50/30 to-transparent pointer-events-none" />
+        <div className="absolute -top-24 -right-24 w-64 h-64 bg-orange-100/20 rounded-full blur-3xl" />
+        <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-start md:items-center gap-6 relative">
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
-            className="space-y-6"
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.6, ease: "easeOut" }}
           >
-            {/* Production Status Alert */}
-            <motion.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: "auto", opacity: 1 }}
-              transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1], delay: 0.2 }}
-              style={{ overflow: 'hidden' }}
+            <div className="flex items-center gap-3 mb-2">
+              <div className="w-10 h-10 rounded-xl bg-orange-600 flex items-center justify-center text-white shadow-lg shadow-orange-200">
+                <Factory size={22} />
+              </div>
+              <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-100 font-bold px-3 py-1">
+                MANUFACTURER PORTAL
+              </Badge>
+            </div>
+            <h1 className="text-4xl font-black tracking-tight text-slate-900 mt-1">
+              {user?.company || 'Company'} <span className="text-orange-600">Dashboard</span>
+            </h1>
+            <p className="text-slate-500 mt-2 font-medium flex items-center gap-2">
+              <Clock size={16} className="text-orange-400" />
+              Performance Overview • {new Date().toLocaleDateString('en-IN', { month: 'long', day: 'numeric', year: 'numeric' })}
+            </p>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.5, delay: 0.2 }}
+            className="flex items-center gap-3"
+          >
+            <MagneticButton>
+              <Button
+                onClick={() => setActiveTab('add-stock')}
+                className="bg-slate-900 hover:bg-black text-white px-6 py-6 rounded-2xl font-bold shadow-xl shadow-slate-200 transition-all hover:-translate-y-1 active:scale-95 group flex items-center gap-2"
+              >
+                <Plus size={20} className="group-hover:rotate-90 transition-transform duration-300" />
+                List New Product
+              </Button>
+            </MagneticButton>
+            <Button
+              variant="outline"
+              className="bg-white border-slate-200 text-slate-600 px-4 py-6 rounded-2xl font-semibold hover:bg-slate-50 transition-all"
             >
-              <Alert className="border-green-400/30 bg-gradient-to-r from-green-50 to-emerald-50/50 shadow-sm backdrop-blur-sm flex items-center">
-                <motion.div
-                  animate={{ scale: [1, 1.15, 1], opacity: [1, 0.7, 1] }}
-                  transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
-                  className="mr-2"
+              <Settings size={20} />
+            </Button>
+          </motion.div>
+        </div>
+      </header>
+
+      {/* Dashboard Tabs Section */}
+      <main className="max-w-7xl mx-auto px-6 py-10 relative">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-10">
+          <div className="sticky top-4 z-40 mb-10">
+            <div className="bg-white/80 backdrop-blur-xl p-1.5 rounded-[24px] border border-white/50 shadow-2xl shadow-slate-200/50 inline-flex w-full md:w-auto">
+              <TabsList className="bg-transparent h-12 gap-1 p-0">
+                <TabsTrigger
+                  value="home"
+                  className="rounded-[18px] px-6 data-[state=active]:bg-slate-900 data-[state=active]:text-white transition-all duration-300 font-bold text-slate-500"
                 >
-                  <Activity className="h-5 w-5 text-green-600" />
-                </motion.div>
-                <AlertDescription className="text-green-800 font-medium ml-1">
-                  Production running at {stats.productionCapacity}% capacity. All systems operational.
-                </AlertDescription>
-              </Alert>
-            </motion.div>
+                  Overview
+                </TabsTrigger>
+                <TabsTrigger
+                  value="my-stock"
+                  className="rounded-[18px] px-6 data-[state=active]:bg-slate-900 data-[state=active]:text-white transition-all duration-300 font-bold text-slate-500"
+                >
+                  Inventory
+                </TabsTrigger>
+                <TabsTrigger
+                  value="orders"
+                  className="rounded-[18px] px-6 data-[state=active]:bg-slate-900 data-[state=active]:text-white transition-all duration-300 font-bold text-slate-500"
+                >
+                  Order Hub
+                </TabsTrigger>
+                <TabsTrigger
+                  value="approvals"
+                  className="rounded-[18px] px-6 data-[state=active]:bg-slate-900 data-[state=active]:text-white transition-all duration-300 font-bold text-slate-500"
+                >
+                  Approvals
+                </TabsTrigger>
+                <TabsTrigger
+                  value="add-stock"
+                  className="rounded-[18px] px-6 data-[state=active]:bg-orange-600 data-[state=active]:text-white transition-all duration-300 font-bold text-slate-500"
+                >
+                  + Publish Stock
+                </TabsTrigger>
+              </TabsList>
+            </div>
+          </div>
 
-            {/* Key Metrics - Bento Morphing Grid */}
-            <motion.div layout className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-              <AnimatePresence>
+          <TabsContent value="home" className="m-0 focus-visible:outline-none">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5 }}
+              className="space-y-6"
+            >
+              {/* Key Metrics Grid */}
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                 {[
-                  {
-                    id: "totalProducts",
-                    title: "Total Products",
-                    icon: Package,
-                    borderColor: "border-[#E5E7EB]",
-                    shadowColor: "shadow-none",
-                    value: stats.totalProducts,
-                    sparkline: [40, 42, 45, 48, 50, 52, 55, 60, 65, 68, 70],
-                    detail: "+12 new this month"
-                  },
-                  {
-                    id: "activeOrders",
-                    title: "Active Orders",
-                    icon: ShoppingCart,
-                    borderColor: "border-[#E5E7EB]",
-                    shadowColor: "shadow-none",
-                    value: stats.activeOrders,
-                    sparkline: [80, 82, 81, 85, 87, 86, 88, 89, 90, 87, 88],
-                    detail: "+8 from last week"
-                  },
-                  {
-                    id: "monthlyRevenue",
-                    title: "Monthly Revenue",
-                    icon: DollarSign,
-                    borderColor: "border-[#E5E7EB]",
-                    shadowColor: "shadow-none",
-                    value: stats.monthlyRevenue,
-                    formatCurrency: true,
-                    sparkline: [100, 120, 110, 140, 130, 160, 150, 180, 190, 200],
-                    detail: "+15% from last month"
-                  },
-                  {
-                    id: "productionCapacity",
-                    title: "Production Capacity",
-                    icon: Zap,
-                    borderColor: "border-[#E5E7EB]",
-                    shadowColor: "shadow-none",
-                    value: stats.productionCapacity,
-                    suffix: "%",
-                    sparkline: [85, 82, 80, 78, 75, 78, 80, 82, 85, 84],
-                    detail: "-1% variance today"
-                  }
-                ].map((item, i) => {
-                  const isExpanded = expandedMetric === item.id;
+                  { title: "Total Products", icon: Package, value: stats.totalProducts, detail: "+12 new this month" },
+                  { title: "Active Orders", icon: ShoppingCart, value: stats.activeOrders, detail: "+8 from last week" },
+                  { title: "Monthly Revenue", icon: DollarSign, value: stats.monthlyRevenue, detail: "+15% from last month", formatCurrency: true },
+                  { title: "Capacity", icon: Zap, value: stats.productionCapacity, detail: "All systems operational", suffix: "%" }
+                ].map((item, i) => (
+                  <HoverGlowCard key={item.title} className="rounded-2xl">
+                    <Card className="border-slate-100 shadow-sm rounded-2xl h-full overflow-hidden">
+                      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium text-slate-500 uppercase tracking-wider">{item.title}</CardTitle>
+                        <item.icon className="h-4 w-4 text-slate-400" />
+                      </CardHeader>
+                      <CardContent>
+                        <div className="text-2xl font-bold text-slate-900">
+                          {item.formatCurrency ? formatCurrency(item.value) : item.value}{item.suffix}
+                        </div>
+                        <p className="text-xs text-slate-500 mt-1">{item.detail}</p>
+                      </CardContent>
+                    </Card>
+                  </HoverGlowCard>
+                ))}
+              </div>
 
-                  // Calculate growth/decline dynamically for insight colors
-                  const startVal = item.sparkline[0];
-                  const endVal = item.sparkline[item.sparkline.length - 1];
-                  const isGrowth = endVal >= startVal;
-                  const sparklineColor = isGrowth ? "#10b981" : "#ef4444"; // emerald-500 for growth, red-500 for decline
-
-                  return (
-                    <motion.div
-                      layout
-                      key={item.id}
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, scale: 0.95 }}
-                      transition={{ duration: 0.4, delay: i * 0.05 }}
-                      onClick={() => !isExpanded && setExpandedMetric(item.id)}
-                      className={`cursor-pointer ${isExpanded ? 'md:col-span-2 lg:col-span-4 min-h-[400px]' : ''}`}
-                      whileHover={!isExpanded ? { y: -4, scale: 1.01 } : {}}
-                    >
-                      <HoverGlowCard className="h-full rounded-sm">
-                        <Card className={`relative h-full overflow-hidden bg-white/90 backdrop-blur-md border ${item.borderColor} shadow-none rounded-sm transition-all duration-300`}>
-                          <SparklineChart data={item.sparkline} color={sparklineColor} />
-                          <CardHeader className="relative z-10 flex flex-row items-center justify-between space-y-0 pb-2">
-                            <motion.div layout="position">
-                              <CardTitle className="text-[0.75rem] uppercase tracking-[0.05em] font-medium text-zinc-600">{item.title}</CardTitle>
-                            </motion.div>
-                            {isExpanded ? (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-7 text-xs z-20 hover:bg-muted"
-                                onClick={(e: React.MouseEvent) => {
-                                  e.stopPropagation();
-                                  setExpandedMetric(null);
-                                }}
-                              >
-                                Close
-                              </Button>
-                            ) : (
-                              <motion.div layout="position">
-                                <item.icon className="h-4 w-4 text-muted-foreground" />
-                              </motion.div>
-                            )}
-                          </CardHeader>
-                          <CardContent className="relative z-10 flex flex-col h-[calc(100%-4rem)]">
-                            <motion.div layout="position" className={`font-bold ${isExpanded ? 'text-4xl' : 'text-2xl'}`}>
-                              <AnimatedCounter
-                                value={item.value}
-                                formatCurrency={item.formatCurrency}
-                                suffix={item.suffix}
-                              />
-                            </motion.div>
-                            <motion.p layout="position" className="text-[0.65rem] uppercase tracking-[0.05em] text-muted-foreground mt-1">
-                              {item.detail}
-                            </motion.p>
-
-                            {isExpanded && (
-                              <motion.div
-                                initial={{ opacity: 0, scale: 0.95 }}
-                                animate={{ opacity: 1, scale: 1 }}
-                                transition={{ duration: 0.3, delay: 0.2 }}
-                                className="mt-6 flex-1 border rounded-lg bg-white/50 backdrop-blur-sm p-4 flex flex-col items-center justify-center text-muted-foreground"
-                              >
-                                <BarChart3 className="h-10 w-10 mb-2 opacity-50" />
-                                <p className="text-sm">Detailed Analytics for {item.title}</p>
-                                <p className="text-xs opacity-70">Interactive data tables & trends will appear here.</p>
-                              </motion.div>
-                            )}
-                          </CardContent>
-                        </Card>
-                      </HoverGlowCard>
-                    </motion.div>
-                  );
-                })}
-              </AnimatePresence>
-            </motion.div>
-
-            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.2 }}>
               {/* Top Performing Products */}
-              <SpotlightCard>
-                <Card className="bg-white border border-[#E5E7EB] rounded-sm shadow-none overflow-hidden">
-                  <CardHeader>
-                    <CardTitle className="font-heading text-2xl tracking-tight">Top Performing Products</CardTitle>
-                    <CardDescription className="uppercase tracking-[0.05em] text-[0.65rem] mt-1">Swipe left or click chart icon for detailed analytics</CardDescription>
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <Card className="lg:col-span-2 border-slate-100 shadow-sm rounded-2xl overflow-hidden">
+                  <CardHeader className="border-b border-slate-50 bg-slate-50/30">
+                    <CardTitle className="text-lg">Top Performing Products</CardTitle>
                   </CardHeader>
-                  <CardContent>
-                    <div className="space-y-2 relative z-10">
-                      {mockProductPerformance.slice(0, 3).map((product) => (
-                        <SwipeableProductCard
-                          key={product.id}
-                          product={product}
-                          formatCurrency={formatCurrency}
-                        />
+                  <CardContent className="p-0">
+                    <div className="divide-y divide-slate-50">
+                      {mockProductPerformance.map((product) => (
+                        <div key={product.id} className="p-4 flex items-center justify-between hover:bg-slate-50 transition-colors">
+                          <div className="flex items-center gap-3">
+                            <div className="w-12 h-12 rounded-lg bg-slate-100 flex items-center justify-center text-slate-400">
+                              <Package size={24} />
+                            </div>
+                            <div>
+                              <p className="font-bold text-slate-900">{product.name}</p>
+                              <p className="text-xs text-slate-500">{product.category}</p>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <p className="font-bold text-slate-900">{formatCurrency(product.revenue)}</p>
+                            <Badge className="bg-green-50 text-green-700 border-green-100">+{product.growthPercent}%</Badge>
+                          </div>
+                        </div>
                       ))}
                     </div>
                   </CardContent>
                 </Card>
-              </SpotlightCard>
-            </motion.div>
-          </motion.div>
-        )
-      }
 
-      {
-        activeTab === 'my-stock' && (
-          <MyStockView
-            onAddStock={() => setActiveTab('add-stock')}
-            onEditStock={(stock) => {
-              setStockToEdit(stock);
-            }}
-            onViewDetails={(stock) => {
-              console.log('View details:', stock);
-            }}
-          />
-        )
-      }
+                <Card className="border-slate-100 shadow-sm rounded-2xl overflow-hidden">
+                  <CardHeader className="border-b border-slate-50 bg-slate-50/30">
+                    <CardTitle className="text-lg">Recent Orders</CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-4 space-y-4">
+                    {mockActiveOrders.slice(0, 3).map((order) => (
+                      <div key={order.id} className="flex flex-col gap-1.5 p-3 rounded-xl bg-slate-50/50 border border-slate-100">
+                        <div className="flex justify-between items-center">
+                          <span className="text-xs font-bold text-slate-900">{order.id}</span>
+                          <Badge variant="outline" className="text-[10px] uppercase font-bold">{order.status}</Badge>
+                        </div>
+                        <p className="text-sm font-medium text-slate-700 truncate">{order.clientName}</p>
+                        <div className="flex justify-between items-center mt-1">
+                          <span className="text-xs text-slate-500">{order.quantity} units</span>
+                          <span className="text-xs font-bold text-orange-600">{formatCurrency(order.value)}</span>
+                        </div>
+                      </div>
+                    ))}
+                    <Button variant="ghost" className="w-full text-slate-500 text-sm font-bold" onClick={() => setActiveTab('orders')}>
+                      View All Orders
+                    </Button>
+                  </CardContent>
+                </Card>
+              </div>
+            </motion.div>
+          </TabsContent>
+
+          <TabsContent value="my-stock" className="m-0 focus-visible:outline-none">
+            <div className="bg-white rounded-3xl border border-slate-100 shadow-xl overflow-hidden min-h-[600px]">
+              <MyStockView
+                onAddStock={() => setActiveTab('add-stock')}
+                onEditStock={(stock) => setStockToEdit(stock)}
+                onViewDetails={(stock) => console.log('View details:', stock)}
+              />
+            </div>
+          </TabsContent>
+
+          <TabsContent value="orders" className="m-0 focus-visible:outline-none">
+            <div className="bg-white rounded-3xl border border-slate-100 shadow-xl overflow-hidden">
+              <UnifiedOrderManagement userRole="supplier" />
+            </div>
+          </TabsContent>
+
+          <TabsContent value="approvals" className="m-0 focus-visible:outline-none">
+            <div className="bg-white rounded-3xl border border-slate-100 shadow-xl overflow-hidden">
+              <ApprovalPanel />
+            </div>
+          </TabsContent>
+
+          <TabsContent value="add-stock" className="m-0 focus-visible:outline-none">
+            <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+              <AddStockWizard
+                onSubmit={handleWizardSubmit}
+                onCancel={() => setActiveTab('home')}
+                navigation={{
+                  currentPage: 'add-stock',
+                  onNavigate: (page) => {
+                    if (page === 'my-stock') setActiveTab('my-stock');
+                    else if (page === 'home') setActiveTab('home');
+                  },
+                  cartItemCount: 0,
+                  notificationCount: 0
+                }}
+              />
+            </div>
+          </TabsContent>
+        </Tabs>
+      </main>
 
       <EditStockForm
         stock={stockToEdit}
         isOpen={!!stockToEdit}
         onClose={() => setStockToEdit(null)}
       />
-
-      {
-        activeTab === 'add-stock' && (
-          <EnhancedAddStockFormWithImages
-            onSubmit={async (stockItem) => {
-              console.log('🚀 [ManufacturerDashboard] Submitting stock item:', stockItem.name);
-              const success = await addStock(stockItem);
-              if (success) {
-                setActiveTab('my-stock');
-              }
-            }}
-            onCancel={() => {
-              setActiveTab('my-stock');
-            }}
-          />
-        )
-      }
-
-      {
-        activeTab === 'orders' && (
-          <UnifiedOrderManagement userRole="supplier" />
-        )
-      }
-
-      {
-        activeTab === 'approvals' && (
-          <ApprovalPanel />
-        )
-      }
-    </motion.div >
+    </div>
   );
 }

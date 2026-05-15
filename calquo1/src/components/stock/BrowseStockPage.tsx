@@ -748,35 +748,8 @@ function StockCard({ stock, viewMode, onViewDetails, userRole, businessType, cur
   
   // OPTIMIZATION: Removed debug console logs for production performance
   
-  // Show role-specific price if available, otherwise show base price
-  const getRolePrice = () => {
-    // For retailers, check single/multi shop prices
-    if (userRole === 'retailer') {
-      if (businessType === 'single-shop' && stock.singleShopPrice && stock.singleShopPrice > 0) {
-        return { price: stock.singleShopPrice, label: 'retailer price' };
-      }
-      if (businessType === 'chain-shop' && stock.multiShopPrice && stock.multiShopPrice > 0) {
-        return { price: stock.multiShopPrice, label: 'retailer price' };
-      }
-    }
-    
-    // For traders, check trader price (if available in data)
-    if (userRole === 'trader' && (stock as any).traderPrice && (stock as any).traderPrice > 0) {
-      return { price: (stock as any).traderPrice, label: 'trader price' };
-    }
-    
-    // Fall back to base price - handle both number and string types
-    const basePriceNum = typeof stock.basePrice === 'string' ? parseFloat(stock.basePrice) : stock.basePrice;
-    if (basePriceNum != null && basePriceNum > 0 && !isNaN(basePriceNum)) {
-      return { price: basePriceNum, label: 'base price' };
-    }
-    
-    return null;
-  };
-  
-  const priceInfo = getRolePrice();
-  const displayPrice = priceInfo?.price;
-  const priceLabel = priceInfo?.label || 'base price';
+  const displayPrice = getEffectivePrice(stock, userRole, businessType, isMyProduct) || stock.basePrice || (stock as any).price;
+  const priceLabel = hasOffer ? 'offer price' : 'effective price';
   
   const hasOffer = stock.offerPrice != null && stock.offerPrice > 0 && stock.basePrice && stock.offerPrice < stock.basePrice;
   const colorImages = getColorImagesForDisplay(stock);

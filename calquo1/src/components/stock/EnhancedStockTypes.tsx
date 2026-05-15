@@ -35,6 +35,13 @@ export interface StockCombination {
   sizeId?: string; // Optional for Individual Flex
   quantity: number;
   availableQuantity: number;
+  piecePrice?: number;
+  mrpPerPiece?: number;
+  singleShopPrice?: number;
+  multiShopPrice?: number;
+  dealerPrice?: number;
+  retailerPrice?: number;
+  offerPrice?: number;
   images: string[]; // Images specific to this combination
 }
 
@@ -61,8 +68,11 @@ export interface EnhancedStockItem {
 
   // Pricing
   basePrice: number;
+  mrp?: number;
   singleShopPrice?: number;
   multiShopPrice?: number;
+  dealerPrice?: number;
+  retailerPrice?: number;
   minOrderQuantity: number;
 
   // Additional properties
@@ -180,10 +190,16 @@ export const getCombinationImages = (
 export const getEffectivePrice = (
   stock: EnhancedStockItem,
   userRole?: string,
-  businessType?: string
+  businessType?: string,
+  isOwner?: boolean
 ): number | undefined => {
   // Return undefined if no prices are available
   if (!stock) return undefined;
+
+  // If the user is the owner (seller), they usually want to see their base price
+  if (isOwner) {
+    return stock.basePrice || (stock as any).price;
+  }
 
   // Check for offer price first
   if (stock.offerPrice && stock.offerPrice > 0) {

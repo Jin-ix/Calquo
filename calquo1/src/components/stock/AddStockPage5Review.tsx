@@ -239,6 +239,7 @@ export function AddStockPage5Review({
                     const setMultiShopPrice = calculateSum('multiShopPrice');
                     const setDealerPrice = calculateSum('dealerPrice');
                     const setRetailerPrice = calculateSum('retailerPrice');
+                    const setOfferPrice = calculateSum('offerPrice');
 
                     return (
                       <div key={group.id} className="border rounded-xl overflow-hidden shadow-sm bg-white">
@@ -272,6 +273,7 @@ export function AddStockPage5Review({
                                   { label: 'Multi', val: setMultiShopPrice },
                                   { label: 'Dealer', val: setDealerPrice },
                                   { label: 'Retail', val: setRetailerPrice },
+                                  { label: 'Offer', val: setOfferPrice },
                                 ].map((item, i) => (
                                    item.val > 0 && (
                                      <div key={i} className="flex flex-col">

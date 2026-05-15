@@ -60,7 +60,8 @@ export function EnhancedStockCard({
   const displayImageIndex = isImageHovered && primaryImages.length > 1 ? 1 : 0;
   const currentImage = primaryImages[displayImageIndex] || null;
 
-  const effectivePrice = getEffectivePrice(stock, user?.role, user?.businessType) ?? stock.basePrice ?? (stock as any).price ?? 0;
+  const isOwner = user?.company === stock.supplier;
+  const effectivePrice = getEffectivePrice(stock, user?.role, user?.businessType, isOwner) ?? stock.basePrice ?? (stock as any).price ?? 0;
   const isOnSale = stock.offerPrice && stock.offerPrice < effectivePrice;
 
   let totalAvailableQuantity = (stock.combinations || []).reduce(
@@ -71,7 +72,6 @@ export function EnhancedStockCard({
   }
 
   const isOutOfStock = totalAvailableQuantity === 0;
-  const isOwner = user?.company === stock.supplier;
 
   const handleAction = (e: React.MouseEvent, action: () => void) => {
     e.stopPropagation();

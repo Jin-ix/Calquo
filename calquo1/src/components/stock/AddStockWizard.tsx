@@ -591,6 +591,12 @@ export function AddStockWizard({ onSubmit, onCancel, navigation, isEditing = fal
       toast.error('Please complete all required fields.');
       return;
     }
+    
+    // Auto-save pending variants to a group if we're on the pricing page (Step 4)
+    if (currentStep === 4 && variants.length > 0) {
+      finalizePendingGroup();
+    }
+    
     if (currentStep < 6) {
       setCurrentStep(currentStep + 1);
       const contentArea = document.getElementById('wizard-content-area');
@@ -819,28 +825,60 @@ export function AddStockWizard({ onSubmit, onCancel, navigation, isEditing = fal
 
       // Combine already saved variant groups and any currently active variants that haven't been 'saved' to a group yet
       const savedVariants = processedVariantGroups.flatMap((group: any) => group.variants);
-      const allVariants = savedVariants.length > 0 ? savedVariants : variants;
+      
+      // If we have unsaved variants in the 'variants' state that aren't already in savedVariants, include them
+      const allVariants = [...savedVariants];
+      variants.forEach((v: any) => {
+        const alreadySaved = savedVariants.some((sv: any) => 
+          sv.colorOrPattern?.value === v.colorOrPattern?.value && sv.size === v.size
+        );
+        if (!alreadySaved) {
+          allVariants.push(v);
+        }
+      });
       
       // Robust base price calculation: 
-      // 1. Try first variant from saved groups
-      // 2. Try first variant from current active variants
-      // 3. Fallback to global formData.price
-      const firstSavedPrice = savedVariants.length > 0 ? (savedVariants[0].piecePrice || 0) : 0;
-      const firstActivePrice = variants.length > 0 ? (variants[0].piecePrice || 0) : 0;
       const globalPrice = parseFloat(formData.price || '0');
-      
-      const basePrice = firstSavedPrice > 0 ? firstSavedPrice : (firstActivePrice > 0 ? firstActivePrice : globalPrice);
+      const variantPrice = allVariants.length > 0 ? (allVariants[0].piecePrice || 0) : 0;
+      const basePrice = variantPrice > 0 ? variantPrice : globalPrice;
       
       // Also sync singleShopPrice etc if they are 0 in formData but present in variants
       const finalSingleShopPrice = parseFloat(formData.singleShopPrice) || (allVariants.length > 0 ? (allVariants[0].singleShopPrice || 0) : 0);
       const finalMultiShopPrice = parseFloat(formData.multiShopPrice) || (allVariants.length > 0 ? (allVariants[0].multiShopPrice || 0) : 0);
+      const finalDealerPrice = parseFloat(formData.dealerPrice) || (allVariants.length > 0 ? (allVariants[0].dealerPrice || 0) : 0);
+      const finalRetailerPrice = parseFloat(formData.retailerPrice) || (allVariants.length > 0 ? (allVariants[0].retailerPrice || 0) : 0);
       const finalMrp = parseFloat(formData.mrp) || (allVariants.length > 0 ? (allVariants[0].mrpPerPiece || 0) : 0);
+
+      const totalQuantity = allVariants.reduce((sum: number, v: any) => sum + (v.quantity || 0), 0);
+
+      // Extract unique colors and sizes for legacy column compatibility
+      const colors = Array.from(new Set(allVariants.map(v => v.colorOrPattern?.name || v.colorOrPattern?.value).filter(Boolean)));
+      const sizes = Array.from(new Set(allVariants.map(v => v.size).filter(Boolean)));
+      
+      // Map variants to combinations format for legacy column compatibility
+      const combinations = allVariants.map(v => ({
+        id: `${v.colorOrPattern?.value}-${v.size}`,
+        colorId: v.colorOrPattern?.value,
+        colorName: v.colorOrPattern?.name,
+        sizeId: v.size,
+        sizeName: v.size,
+        availableQuantity: v.quantity,
+        price: v.piecePrice || basePrice,
+        mrp: v.mrpPerPiece || finalMrp,
+        singleShopPrice: v.singleShopPrice || finalSingleShopPrice,
+        multiShopPrice: v.multiShopPrice || finalMultiShopPrice,
+        dealerPrice: v.dealerPrice || finalDealerPrice,
+        retailerPrice: v.retailerPrice || finalRetailerPrice,
+        offerPrice: v.offerPrice || 0,
+        images: v.images || (v.imageUrl ? [v.imageUrl] : [])
+      }));
 
       console.log('📦 [PUBLISH] Price & Variants processed:', {
         totalVariants: allVariants.length,
         basePrice,
         finalSingleShopPrice,
-        totalQuantity: allVariants.reduce((sum: number, v: any) => sum + (v.quantity || 0), 0)
+        finalDealerPrice,
+        totalQuantity
       });
 
       // DEBUG: Log first few variant image URLs to confirm upload
@@ -852,108 +890,57 @@ export function AddStockWizard({ onSubmit, onCancel, navigation, isEditing = fal
         });
       }
 
-      const stockItem: Omit<StockItem, 'id' | 'dateAdded'> = {
+      const stockItem: any = {
         name: formData.name,
         category: formData.category || '',
         hsnCode: formData.hsnCode || '',
         description: formData.description || '',
-        size: '', color: '',
-        quantity: allVariants.reduce((sum: number, v: any) => sum + (v.quantity || 0), 0),
+        size: sizes.join(', ') || '', 
+        color: colors.join(', ') || '',
+        quantity: totalQuantity,
         price: basePrice,
-        mrp: finalMrp || undefined,
-        singleShopPrice: finalSingleShopPrice || undefined,
-        multiShopPrice: finalMultiShopPrice || undefined,
-        dealerPrice: formData.dealerPrice ? parseFloat(formData.dealerPrice) : undefined,
-        retailerPrice: formData.retailerPrice ? parseFloat(formData.retailerPrice) : undefined,
+        mrp: finalMrp || 0,
+        singleShopPrice: finalSingleShopPrice || 0,
+        multiShopPrice: finalMultiShopPrice || 0,
+        dealerPrice: finalDealerPrice || 0,
+        retailerPrice: finalRetailerPrice || 0,
         minOrderQuantity: parseInt(formData.minOrderQuantity || '1'),
         fabricType: formData.fabricType || '',
         fabricDescription: formData.fabricDescription || '',
-        deliveryTime: formData.deliveryTime as any,
+        deliveryTime: formData.deliveryTime || '',
         itemCode: formData.itemCode || '',
         unitOfMeasure: formData.unitOfMeasure || 'PCS',
         batchCode: formData.batchCode || '',
         variants: allVariants,
+        variant_groups: processedVariantGroups,
+        colors: colors,
+        sizes: sizes,
+        combinations: combinations,
         images: finalProductImages || [],
-        vtonImageUrl: finalVtonImageUrl || undefined,
+        vtonImageUrl: finalVtonImageUrl || null,
         mainImageIndex: mainImageIndex || 0,
         notes: formData.notes || '',
         tradersOnly: formData.tradersOnly || false,
         selectedTraders: formData.selectedTraders || [],
         hasOffer: formData.hasOffer || false,
-        offerPrice: formData.hasOffer && formData.offerPrice ? parseFloat(formData.offerPrice) : undefined,
+        offerPrice: formData.hasOffer && formData.offerPrice ? parseFloat(formData.offerPrice) : 0,
         offerType: formData.offerType || 'time',
-        offerTimeWeeks: formData.hasOffer && formData.offerTimeWeeks ? parseInt(formData.offerTimeWeeks) : undefined,
-        offerMinQuantity: formData.hasOffer && formData.offerMinQuantity ? parseInt(formData.offerMinQuantity) : undefined,
+        offerTimeWeeks: formData.hasOffer && formData.offerTimeWeeks ? parseInt(formData.offerTimeWeeks) : 0,
+        offerMinQuantity: formData.hasOffer && formData.offerMinQuantity ? parseInt(formData.offerMinQuantity) : 0,
         supplier: user?.company || 'Demo Company',
         sellerId: user?.id || (firebaseAuth?.currentUser?.uid),
-        supplierType: (user?.role === 'manufacturer' ? 'manufacturer' : 'trader') as any,
+        supplierType: (user?.role === 'manufacturer' ? 'manufacturer' : 'trader'),
         location: user?.profile?.address?.city || 'India',
         unitMode: formData.unitMode || 'individual',
-        bulkSellingMode: formData.bulkSellingMode || 'pieces'
+        bulkSellingMode: formData.bulkSellingMode || 'pieces',
+        seller_company: user?.company || 'Demo Company'
       };
 
-      console.log('💾 [PUBLISH] Stock item prepared:', {
-        name: stockItem.name,
-        productImages: stockItem.images.length
-      });
-
-      // Mapping helper for Supabase snake_case
-      const mapToSupabase = (item: any) => ({
-        name: item.name,
-        category: item.category,
-        hsn_code: item.hsnCode,
-        description: item.description,
-        size: item.size || '',
-        color: item.color || '',
-        quantity: item.quantity || 0,
-        base_price: item.price || item.basePrice || 0,
-        mrp: item.mrp || 0,
-        single_shop_price: item.singleShopPrice || 0,
-        multi_shop_price: item.multiShopPrice || 0,
-        dealer_price: item.dealerPrice || 0,
-        retailer_price: item.retailerPrice || 0,
-        min_order_quantity: item.minOrderQuantity || 1,
-        fabric_type: item.fabricType || '',
-        fabric_description: item.fabricDescription || '',
-        delivery_time: item.deliveryTime || '',
-        item_code: item.itemCode || '',
-        unit_of_measure: item.unitOfMeasure || 'PCS',
-        batch_code: item.batchCode || '',
-        variants: item.variants || [],
-        images: item.images || [],
-        main_images: item.images || [], // Map images to main_images as well for consistency
-        vton_image_url: item.vtonImageUrl || null,
-        main_image_index: item.mainImageIndex || 0,
-        notes: item.notes || '',
-        traders_only: item.tradersOnly || false,
-        selected_traders: item.selectedTraders || [],
-        has_offer: item.hasOffer || false,
-        offer_price: item.offerPrice || 0,
-        offer_type: item.offerType || 'time',
-        offer_time_weeks: item.offerTimeWeeks || 0,
-        offer_min_quantity: item.offerMinQuantity || 0,
-        supplier: user?.company || 'Demo Company',
-        supplier_type: (user?.role === 'manufacturer' ? 'manufacturer' : 'trader'),
-        location: item.location || 'India',
-        unit_mode: item.unitMode || 'individual',
-        bulk_selling_mode: item.bulkSellingMode || 'pieces',
-        gst_number: user?.id || 'demo_company',
-        seller_company: user?.company || 'Demo Company',
-        status: 'active',
-        variant_groups: processedVariantGroups.map((group: any) => ({
-          id: group.id,
-          name: group.name,
-          group_number: group.groupNumber,
-          variants: group.variants
-        }))
-      });
+      console.log('💾 [PUBLISH] Stock item prepared for Provider:', stockItem.name);
 
       // SUBMIT TO PROVIDER (AppMain handleAddStock or EditStockForm handleStockUpdate)
       // The Provider's addStock/updateStock will handle the Supabase mapping centrally.
-      console.log('🚀 [WIZARD SUBMIT] stockItem:', stockItem);
-      console.log('🚀 [PUBLISH] Submitting to Provider:', stockItem.name);
-      
-      const finalItemToSubmit = isEditing && initialStock?.id ? { id: initialStock.id, ...stockItem } : stockItem;
+      const finalItemToSubmit = isEditing && initialStock?.id ? { ...stockItem, id: initialStock.id } : stockItem;
       onSubmit(finalItemToSubmit);
       
       localStorage.removeItem('calico_add_stock_draft');
