@@ -104,7 +104,7 @@ export function ProductSelectionModal({
       if (stock.combinations && stock.combinations.length > 0) {
         const firstCombination = stock.combinations[0];
         if (firstCombination.images && firstCombination.images.length > 0) {
-          return firstCombination.images.slice(0, 2);
+          return firstCombination.images.slice(0, 5);
         }
       }
 

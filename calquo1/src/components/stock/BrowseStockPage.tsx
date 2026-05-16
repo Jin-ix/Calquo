@@ -131,7 +131,11 @@ export function BrowseStockPage({
   });
 
   // Modal states
-  const [selectedStock, setSelectedStock] = useState<EnhancedStockItem | null>(null);
+  const [selectedStockId, setSelectedStockId] = useState<string | null>(null);
+  
+  const selectedStock = useMemo(() => {
+    return allStock.find(stock => stock.id === selectedStockId) || null;
+  }, [allStock, selectedStockId]);
   const [showDetailPage, setShowDetailPage] = useState(false);
 
   // OPTIMIZATION: Compute filter options only when stock changes (not on every filter change)
@@ -481,7 +485,7 @@ export function BrowseStockPage({
         product={selectedStock}
         onBack={() => {
           setShowDetailPage(false);
-          setSelectedStock(null);
+          setSelectedStockId(null);
         }}
         onAddToCart={handleAddToCart}
       />
@@ -673,7 +677,7 @@ export function BrowseStockPage({
                     stock={stock}
                     viewMode={viewMode}
                     onViewDetails={() => {
-                      setSelectedStock(stock);
+                      setSelectedStockId(stock.id);
                       setShowDetailPage(true);
                     }}
                     userRole={user?.role}

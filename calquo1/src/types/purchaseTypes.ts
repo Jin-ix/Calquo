@@ -24,7 +24,8 @@ export type PurchaseRequestStatus =
   | 'qc_verified'
   | 'completed_and_released'
   | 'negotiating_agent'
-  | 'agent_locked';
+  | 'agent_locked'
+  | 'draft';
 
 export interface PurchaseRequestItem {
   combinationId: string;

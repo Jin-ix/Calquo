@@ -58,24 +58,34 @@ export async function addDoc(collectionRef: any, data: any) {
   const col = collectionRef.path || collectionRef;
 
   // Self-healing insert: strips unknown columns automatically on PGRST204
-  const attemptInsert = async (payload: Record<string, any>): Promise<{ id: string | null; path: string }> => {
+  // strippedCols tracks columns already removed so we never re-add them
+  const attemptInsert = async (
+    payload: Record<string, any>,
+    strippedCols: Set<string> = new Set()
+  ): Promise<{ id: string | null; path: string }> => {
+    // Only include timestamp defaults if they haven't been stripped already
+    const timestamps: Record<string, string> = {};
+    if (!strippedCols.has('created_at')) timestamps.created_at = new Date().toISOString();
+    if (!strippedCols.has('updated_at')) timestamps.updated_at = new Date().toISOString();
+
     const { data: res, error } = await supabase.from(col).insert([{
       ...payload,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
+      ...timestamps
     }]).select().single();
 
     if (error) {
       // PGRST204: column doesn't exist in schema — strip it and retry automatically
       if (error.code === 'PGRST204') {
-        const colMatch = error.message?.match(/column ['"]([\w]+)['"]/i)
-          || error.message?.match(/'([\w]+)' column/i)
-          || error.message?.match(/find the '([\w]+)'/i);
+        const colMatch = error.message?.match(/column ['"](\w+)['"]/i)
+          || error.message?.match(/'(\w+)' column/i)
+          || error.message?.match(/find the '(\w+)'/i);
         if (colMatch) {
           const badCol = colMatch[1];
           console.warn(`[Supabase] Column "${badCol}" missing in "${col}" — stripping and retrying insert.`);
           const { [badCol]: _removed, ...rest } = payload;
-          return await attemptInsert(rest); // retry without the bad column
+          const nextStripped = new Set(strippedCols);
+          nextStripped.add(badCol);
+          return await attemptInsert(rest, nextStripped);
         }
       }
       // Any other error — log and return null

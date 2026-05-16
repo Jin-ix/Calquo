@@ -2223,6 +2223,23 @@ export function AppMain({ user }: AppMainProps) {
     };
   }, [handleViewProductDetails]);
 
+  // Event listener for direct product edit navigation
+  useEffect(() => {
+    const handleProductEditNavigation = (event: CustomEvent) => {
+      const { product } = event.detail;
+      if (product) {
+        setEditingStock(product);
+        setActiveView('edit-stock');
+      }
+    };
+
+    window.addEventListener('navigate-to-product-edit', handleProductEditNavigation as EventListener);
+
+    return () => {
+      window.removeEventListener('navigate-to-product-edit', handleProductEditNavigation as EventListener);
+    };
+  }, []);
+
   const renderContent = () => {
     console.log(`[Render] Rendering view: ${activeView} for role: ${user?.role}`);
 

@@ -848,6 +848,20 @@ export function AddStockWizard({ onSubmit, onCancel, navigation, isEditing = fal
       const finalDealerPrice = parseFloat(formData.dealerPrice) || (allVariants.length > 0 ? (allVariants[0].dealerPrice || 0) : 0);
       const finalRetailerPrice = parseFloat(formData.retailerPrice) || (allVariants.length > 0 ? (allVariants[0].retailerPrice || 0) : 0);
       const finalMrp = parseFloat(formData.mrp) || (allVariants.length > 0 ? (allVariants[0].mrpPerPiece || 0) : 0);
+      const variantWithOffer = allVariants.find(v => v.offerPrice && v.offerPrice > 0);
+      const finalOfferPrice = parseFloat(formData.offerPrice) || (variantWithOffer ? variantWithOffer.offerPrice : 0);
+
+      const computedHasOffer = formData.hasOffer || finalOfferPrice > 0 || !!variantWithOffer;
+
+      // Calculate offer expiry date for time-based offers
+      const calculateOfferExpiry = () => {
+        if (computedHasOffer && formData.offerType === 'time' && formData.offerTimeWeeks) {
+          const now = new Date();
+          const expiryDate = new Date(now.getTime() + (parseInt(formData.offerTimeWeeks) * 7 * 24 * 60 * 60 * 1000));
+          return expiryDate.toISOString();
+        }
+        return undefined;
+      };
 
       const totalQuantity = allVariants.reduce((sum: number, v: any) => sum + (v.quantity || 0), 0);
 
@@ -922,11 +936,12 @@ export function AddStockWizard({ onSubmit, onCancel, navigation, isEditing = fal
         notes: formData.notes || '',
         tradersOnly: formData.tradersOnly || false,
         selectedTraders: formData.selectedTraders || [],
-        hasOffer: formData.hasOffer || false,
-        offerPrice: formData.hasOffer && formData.offerPrice ? parseFloat(formData.offerPrice) : 0,
+        hasOffer: computedHasOffer,
+        offerPrice: computedHasOffer ? finalOfferPrice : 0,
         offerType: formData.offerType || 'time',
-        offerTimeWeeks: formData.hasOffer && formData.offerTimeWeeks ? parseInt(formData.offerTimeWeeks) : 0,
-        offerMinQuantity: formData.hasOffer && formData.offerMinQuantity ? parseInt(formData.offerMinQuantity) : 0,
+        offerTimeWeeks: computedHasOffer && formData.offerTimeWeeks ? parseInt(formData.offerTimeWeeks) : 0,
+        offerMinQuantity: computedHasOffer && formData.offerMinQuantity ? parseInt(formData.offerMinQuantity) : 0,
+        offerValidUntil: calculateOfferExpiry(),
         supplier: user?.company || 'Demo Company',
         sellerId: user?.id || (firebaseAuth?.currentUser?.uid),
         supplierType: (user?.role === 'manufacturer' ? 'manufacturer' : 'trader'),

@@ -6,8 +6,19 @@ import { useAuth } from '../auth/AuthProvider';
 import { useLanguage, Language } from '../context/LanguageProvider';
 import { CartBadge } from '../cart/CartBadge';
 import { NotificationBell, NotificationPanel } from '../notifications/NotificationSystem';
-import { Building2, LogOut, Settings, Globe, Sun, Moon, Sparkles } from 'lucide-react';
+import { LogOut, Settings, Globe, Sun, Moon, Sparkles } from 'lucide-react';
 import { Badge } from '../ui/badge';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '../ui/alert-dialog';
 
 interface HeaderProps {
   onSettingsClick: () => void;
@@ -54,8 +65,7 @@ export function Header({ onSettingsClick, onCartClick, onNavigate }: HeaderProps
     <header className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50">
       <div className="container mx-auto px-3 sm:px-4 h-12 sm:h-14 flex items-center justify-between">
         <div className="flex items-center gap-2 sm:gap-3">
-          <Building2 className="h-4 w-4 sm:h-5 sm:w-5" />
-          <h1 className="text-base sm:text-lg font-medium">CALICO</h1>
+          <h1 className="text-base sm:text-lg font-medium tracking-tight">CALICO</h1>
         </div>
 
         <div className="flex items-center gap-1 sm:gap-2 md:gap-3">
@@ -113,9 +123,58 @@ export function Header({ onSettingsClick, onCartClick, onNavigate }: HeaderProps
               )}
 
               {/* Logout - Show as compact icon on mobile */}
-              <Button variant="ghost" size="sm" onClick={logout} className="h-8 w-8 p-0 sm:h-auto sm:w-auto sm:p-2">
-                <LogOut className="h-3 w-3 sm:h-4 sm:w-4" />
-              </Button>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0 sm:h-auto sm:w-auto sm:p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors group">
+                    <LogOut className="h-3 w-3 sm:h-4 sm:w-4 group-hover:-translate-x-1 transition-transform duration-300" />
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent className="w-[92vw] max-w-md p-0 overflow-hidden rounded-[2rem] border border-white/20 shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)] bg-white/95 dark:bg-slate-900/95 backdrop-blur-2xl">
+                  
+                  {/* Modern top header graphic */}
+                  <div className="relative h-32 w-full overflow-hidden bg-slate-50 dark:bg-slate-950/50">
+                    {/* Abstract shapes */}
+                    <div className="absolute -top-10 -right-10 w-40 h-40 bg-red-500/20 rounded-full blur-2xl" />
+                    <div className="absolute -bottom-10 -left-10 w-40 h-40 bg-orange-500/20 rounded-full blur-2xl" />
+                    
+                    {/* Center icon */}
+                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
+                      <div className="relative group">
+                        <div className="absolute inset-0 bg-red-500/20 rounded-full blur-md animate-pulse" />
+                        <div className="h-16 w-16 bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-100 dark:border-slate-700 flex items-center justify-center relative rotate-3 group-hover:rotate-0 transition-transform duration-300">
+                          <LogOut className="h-7 w-7 text-red-500 translate-x-0.5" />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="px-6 py-8 flex flex-col items-center text-center relative z-10">
+                    <AlertDialogTitle className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white mb-2">
+                      Sign out of CALIQUO?
+                    </AlertDialogTitle>
+                    
+                    <AlertDialogDescription className="text-slate-500 dark:text-slate-400 text-sm mb-8 leading-relaxed max-w-[280px] mx-auto">
+                      You are currently signed in as <br/>
+                      <span className="inline-flex items-center justify-center mt-3 px-3 py-1.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-medium border border-slate-200 dark:border-slate-700 shadow-sm">
+                        <div className="w-2 h-2 rounded-full bg-green-500 mr-2" />
+                        {user?.company || 'your account'}
+                      </span>
+                    </AlertDialogDescription>
+
+                    <AlertDialogFooter className="w-full flex gap-3 sm:gap-4 m-0 flex-row">
+                      <AlertDialogCancel className="!m-0 flex-1 h-12 rounded-xl !bg-white dark:!bg-slate-800 !text-slate-700 dark:!text-slate-200 border border-slate-200 dark:border-slate-700 font-medium hover:!bg-slate-50 dark:hover:!bg-slate-700 transition-colors text-base">
+                        Cancel
+                      </AlertDialogCancel>
+                      <AlertDialogAction 
+                        onClick={() => logout()} 
+                        className="!m-0 flex-1 h-12 rounded-xl !bg-red-600 !text-white border border-transparent font-medium hover:!bg-red-700 shadow-sm transition-colors text-base"
+                      >
+                        Sign Out
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </div>
+                </AlertDialogContent>
+              </AlertDialog>
             </>
           )}
 

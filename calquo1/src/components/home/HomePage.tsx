@@ -3,6 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { safeAddEventListener } from '../utils/timeout-protection';
+import { notificationService } from '../../utils/firebase/notificationService';
 
 import { useAuth } from '../auth/AuthProvider';
 import { useLanguage } from '../context/LanguageProvider';
@@ -82,6 +83,81 @@ const mockData = {
 export function HomePage({ onNavigate, currentView }: HomePageProps) {
   const { user } = useAuth();
   const { t } = useLanguage();
+  const [activities, setActivities] = React.useState<any[]>([]);
+  const [loadingActivities, setLoadingActivities] = React.useState(true);
+
+  // Fetch real activities
+  useEffect(() => {
+    const fetchActivities = async () => {
+      if (!user?.id) return;
+      try {
+        setLoadingActivities(true);
+        const notifs = await notificationService.getUserNotifications(user.id);
+        
+        // Sort by createdAt descending
+        notifs.sort((a: any, b: any) => {
+          const timeA = a.createdAt?.seconds || 0;
+          const timeB = b.createdAt?.seconds || 0;
+          return timeB - timeA;
+        });
+
+        // Take top 5
+        const recentNotifs = notifs.slice(0, 5);
+        
+        // Map to activity format
+        const mappedActivities = recentNotifs.map(n => {
+          let icon = <Bell className="h-5 w-5" />;
+          let color = 'bg-zinc-50 text-black border border-[#E5E5E5]';
+          
+          if (n.type === 'purchase_request') {
+             icon = <ShoppingCart className="h-5 w-5" />;
+          } else if (n.type === 'order_approval') {
+             icon = <FileText className="h-5 w-5" />;
+             color = 'bg-green-50 text-green-700 border border-green-200';
+          } else if (n.type === 'logistics_assignment') {
+             icon = <Truck className="h-5 w-5" />;
+          } else if (n.type === 'payment_update') {
+             icon = <CreditCard className="h-5 w-5" />;
+             color = 'bg-black text-white';
+          } else if (n.type === 'order_rejection') {
+             icon = <TrendingUp className="h-5 w-5" />;
+             color = 'bg-red-50 text-red-700 border border-red-200';
+          }
+
+          // Format time
+          let timeStr = 'RECENTLY';
+          if (n.createdAt && n.createdAt.toDate) {
+            const date = n.createdAt.toDate();
+            const now = new Date();
+            const diffHours = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60));
+            if (diffHours < 1) {
+              timeStr = 'JUST NOW';
+            } else if (diffHours < 24) {
+              timeStr = `${diffHours} HOUR${diffHours > 1 ? 'S' : ''} AGO`;
+            } else {
+              const diffDays = Math.floor(diffHours / 24);
+              timeStr = `${diffDays} DAY${diffDays > 1 ? 'S' : ''} AGO`;
+            }
+          }
+
+          return {
+            icon,
+            text: n.title || n.message,
+            time: timeStr,
+            color
+          };
+        });
+
+        setActivities(mappedActivities);
+      } catch (err) {
+        console.error("Failed to fetch activities", err);
+      } finally {
+        setLoadingActivities(false);
+      }
+    };
+
+    fetchActivities();
+  }, [user]);
 
   // Listen for banner navigation events
   useEffect(() => {
@@ -406,24 +482,28 @@ export function HomePage({ onNavigate, currentView }: HomePageProps) {
             </Button>
           </div>
           <div className="space-y-0">
-            {/* Mock recent activity items */}
-            {[
-              { icon: <Package className="h-5 w-5" />, text: 'New item listed: Premium Cotton T-Shirt', time: '2 HOURS AGO', color: 'bg-zinc-50 text-black border border-[#E5E5E5]' },
-              { icon: <ShoppingCart className="h-5 w-5" />, text: 'Order received from Mumbai Fashions', time: '4 HOURS AGO', color: 'bg-zinc-50 text-black border border-[#E5E5E5]' },
-              { icon: <Users className="h-5 w-5" />, text: 'Brand added to VIP preferred list', time: '1 DAY AGO', color: 'bg-zinc-50 text-black border border-[#E5E5E5]' },
-              { icon: <CreditCard className="h-5 w-5" />, text: 'Payment invoice cleared successfully', time: '2 DAYS AGO', color: 'bg-black text-white' }
-            ].map((activity, index) => (
-              <div key={index} className="flex items-center gap-6 group py-4 border-b border-[#E5E7EB] transition-all cursor-pointer hover:bg-zinc-50/50 hover:pl-2">
-                <div className={`p-4 rounded-full ${activity.color} shrink-0 transition-all duration-500 group-hover:scale-[1.15] group-hover:shadow-lg`}>
-                  {activity.icon}
-                </div>
-                <div className="flex-1 space-y-1.5 transition-transform duration-300 group-hover:translate-x-2">
-                  <p className="text-base font-bold text-zinc-900 tracking-tight">{activity.text}</p>
-                  <p className="text-[10px] font-black tracking-[0.2em] text-[#A3A3A3] uppercase">{activity.time}</p>
-                </div>
-                <ArrowRight className="h-5 w-5 text-zinc-300 group-hover:text-black group-hover:translate-x-3 transition-transform duration-500" />
+            {loadingActivities ? (
+              <div className="py-8 text-center text-zinc-500 font-medium text-sm animate-pulse">
+                Loading recent activity...
               </div>
-            ))}
+            ) : activities.length === 0 ? (
+              <div className="py-8 text-center text-zinc-400 font-medium text-sm">
+                No recent activity to show
+              </div>
+            ) : (
+              activities.map((activity, index) => (
+                <div key={index} className="flex items-center gap-6 group py-4 border-b border-[#E5E7EB] transition-all cursor-pointer hover:bg-zinc-50/50 hover:pl-2">
+                  <div className={`p-4 rounded-full ${activity.color} shrink-0 transition-all duration-500 group-hover:scale-[1.15] group-hover:shadow-lg`}>
+                    {activity.icon}
+                  </div>
+                  <div className="flex-1 space-y-1.5 transition-transform duration-300 group-hover:translate-x-2">
+                    <p className="text-base font-bold text-zinc-900 tracking-tight">{activity.text}</p>
+                    <p className="text-[10px] font-black tracking-[0.2em] text-[#A3A3A3] uppercase">{activity.time}</p>
+                  </div>
+                  <ArrowRight className="h-5 w-5 text-zinc-300 group-hover:text-black group-hover:translate-x-3 transition-transform duration-500" />
+                </div>
+              ))
+            )}
           </div>
         </div>
       )}

@@ -349,7 +349,7 @@ export function ManufacturerDashboard({ initialTab = 'home' }: ManufacturerDashb
       {/* Dashboard Tabs Section */}
       <main className="max-w-7xl mx-auto px-6 py-10 relative">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-10">
-          <div className="sticky top-4 z-40 mb-10">
+          <div className="sticky top-4 z-40 mb-10 hidden">
             <div className="bg-white/80 backdrop-blur-xl p-1.5 rounded-[24px] border border-white/50 shadow-2xl shadow-slate-200/50 inline-flex w-full md:w-auto">
               <TabsList className="bg-transparent h-12 gap-1 p-0">
                 <TabsTrigger

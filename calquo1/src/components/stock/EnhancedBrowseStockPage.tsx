@@ -94,7 +94,11 @@ export function EnhancedBrowseStockPage({
   });
 
   // Modal states
-  const [selectedItem, setSelectedItem] = useState<EnhancedStockItem | null>(null);
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  
+  const selectedItem = useMemo(() => {
+    return allStock.find(stock => stock.id === selectedItemId) || null;
+  }, [allStock, selectedItemId]);
   const [showPurchaseModal, setShowPurchaseModal] = useState(false);
   const [showDetailPage, setShowDetailPage] = useState(false);
 
@@ -258,14 +262,14 @@ export function EnhancedBrowseStockPage({
       return;
     }
 
-    setSelectedItem(item);
+    setSelectedItemId(item.id);
     setShowPurchaseModal(true);
   };
 
   // Handle successful payment
   const handlePaymentSuccess = async (orderId: string) => {
     setShowPurchaseModal(false);
-    setSelectedItem(null);
+    setSelectedItemId(null);
     
     toast.success('Order placed successfully!', {
       description: `Order ID: ${orderId}`,
@@ -311,7 +315,7 @@ export function EnhancedBrowseStockPage({
         product={selectedItem}
         onBack={() => {
           setShowDetailPage(false);
-          setSelectedItem(null);
+          setSelectedItemId(null);
         }}
         onPurchaseRequest={(request) => {
           setShowDetailPage(false);
@@ -596,7 +600,7 @@ export function EnhancedBrowseStockPage({
                     stock={stock}
                     onPurchase={handlePurchaseClick}
                     onViewDetails={(item) => {
-                      setSelectedItem(item);
+                      setSelectedItemId(item.id);
                       setShowDetailPage(true);
                     }}
                     viewMode={viewMode}

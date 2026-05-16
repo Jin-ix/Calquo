@@ -82,7 +82,7 @@ export function FriendlyProductSelectionModal({
     if (stock.colors && stock.colors.length > 0) {
       stock.colors.forEach(color => {
         if (color.images && color.images.length > 0) {
-          images.push(...color.images.slice(0, 2));
+          images.push(...color.images.slice(0, 5));
         }
       });
     }

@@ -22,6 +22,7 @@ import {
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "../ui/dialog";
 import { Textarea } from '../ui/textarea';
 import { Label } from '../ui/label';
+import { Input } from '../ui/input';
 
 import { StockItem } from './StockCard';
 import { EnhancedStockItem, getEffectivePrice } from './EnhancedStockTypes';
@@ -35,6 +36,7 @@ import { notificationService } from '../../utils/firebase/notificationService';
 import { PurchaseRequest } from '../../types/purchaseTypes';
 import { PurchaseRequestDebug } from './PurchaseRequestDebug';
 import { VirtualTryOn } from '../vton/VirtualTryOn';
+import { useStock } from '../context/StockProvider';
 
 // Types for props
 interface ProductDetailProps {
@@ -56,6 +58,7 @@ export function EnhancedModernProductDetail({
   onAddToCart
 }: ProductDetailProps) {
   const { user } = useAuth();
+  const { deleteStock, updateStock } = useStock();
 
   // DEBUG: Check product image data
   React.useEffect(() => {
@@ -89,6 +92,9 @@ export function EnhancedModernProductDetail({
   const [purchaseNote, setPurchaseNote] = useState('');
   const [bulkSelectQty, setBulkSelectQty] = useState<number>(0);
   const [infoView, setInfoView] = useState<'description' | 'supplier'>('description');
+  const [showAdjustModal, setShowAdjustModal] = useState(false);
+  const [adjustQuantity, setAdjustQuantity] = useState(0);
+  const [isAdjusting, setIsAdjusting] = useState(false);
 
   // Multi-step checkout states
   const [checkoutPhase, setCheckoutPhase] = useState<'summary' | 'checkout'>('summary');
@@ -319,10 +325,98 @@ export function EnhancedModernProductDetail({
   const totalSelectedPrice = totalSelectedQty * displayPrice;
 
   // -- Handlers --
-  const handleEdit = () => toast.info("Edit functionality coming soon");
-  const handleAdjustStock = () => toast.info("Stock adjustment coming soon");
-  const handleDelete = () => toast.error("Delete functionality coming soon");
-  const handlePrintBarcode = () => toast.success("Printing barcode...");
+  const handleEdit = () => {
+    window.dispatchEvent(new CustomEvent('navigate-to-product-edit', { detail: { product } }));
+  };
+  
+  const handleAdjustStock = () => {
+    setAdjustQuantity(totalStock);
+    setShowAdjustModal(true);
+  };
+  
+  const submitAdjustStock = async () => {
+    setIsAdjusting(true);
+    try {
+      const updatedProduct = { ...product, quantity: adjustQuantity };
+      
+      // Update variants/combinations if they exist to match the new total stock
+      if (updatedProduct.combinations && updatedProduct.combinations.length > 0) {
+        const comboCount = updatedProduct.combinations.length;
+        const baseQty = Math.floor(adjustQuantity / comboCount);
+        let remainder = adjustQuantity % comboCount;
+        
+        updatedProduct.combinations = updatedProduct.combinations.map((combo, idx) => {
+          const qty = baseQty + (idx < remainder ? 1 : 0);
+          return { ...combo, availableQuantity: qty, quantity: qty };
+        });
+
+        // Also update the underlying variants array if it exists (for Supabase mapping)
+        if ((updatedProduct as any).variants && Array.isArray((updatedProduct as any).variants)) {
+          (updatedProduct as any).variants = (updatedProduct as any).variants.map((v: any, idx: number) => {
+            const qty = baseQty + (idx < remainder ? 1 : 0);
+            return { ...v, quantity: qty };
+          });
+        }
+      }
+
+      await updateStock(product.id, updatedProduct);
+      toast.success("Stock quantity adjusted successfully!");
+      setShowAdjustModal(false);
+    } catch (e) {
+      toast.error("Failed to adjust stock quantity.");
+    } finally {
+      setIsAdjusting(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (confirm("Are you sure you want to delete this item? This action cannot be undone.")) {
+      try {
+        await deleteStock(product.id);
+        toast.success("Item deleted successfully");
+        onBack();
+      } catch (e) {
+        toast.error("Failed to delete item");
+      }
+    }
+  };
+  
+  const handlePrintBarcode = () => {
+    const printWindow = window.open('', '_blank');
+    if (printWindow) {
+      printWindow.document.write(`
+        <html>
+          <head>
+            <title>Print Barcode - ${product.name}</title>
+            <style>
+              body { font-family: sans-serif; display: flex; flex-wrap: wrap; gap: 20px; padding: 20px; }
+              .label { border: 1px solid #ccc; padding: 15px; width: 200px; text-align: center; }
+              .barcode { font-size: 32px; font-family: "Libre Barcode 39", monospace; margin: 10px 0; }
+              .sku { font-family: monospace; font-size: 12px; }
+              .price { font-weight: bold; font-size: 16px; margin-top: 5px; }
+              @media print { body { padding: 0; } .label { page-break-inside: avoid; } }
+            </style>
+            <link href="https://fonts.googleapis.com/css2?family=Libre+Barcode+39&display=swap" rel="stylesheet">
+          </head>
+          <body>
+            <div class="label">
+              <div style="font-weight: 600; font-size: 14px;">${product.name.substring(0, 25)}${product.name.length > 25 ? '...' : ''}</div>
+              <div class="barcode">*${product.id.substring(0, 8).toUpperCase()}*</div>
+              <div class="sku">${(product as any).sku || 'SKU-' + product.id.substring(0, 6).toUpperCase()}</div>
+              <div class="price">Rs. ${displayPrice}</div>
+            </div>
+            <script>
+              window.onload = () => { setTimeout(() => window.print(), 500); }
+            </script>
+          </body>
+        </html>
+      `);
+      printWindow.document.close();
+      toast.success("Opening print dialog...");
+    } else {
+      toast.error("Popup blocker prevented opening the print window");
+    }
+  };
 
   const handleAddToCartAction = () => {
     // Basic Add to Cart Implementation
@@ -1315,79 +1409,33 @@ export function EnhancedModernProductDetail({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      {/* Debug Section */}
-      <div className="max-w-7xl mx-auto px-4 py-8">
-        <details className="bg-gray-100 p-4 rounded-lg border border-gray-300">
-          <summary className="cursor-pointer font-bold text-gray-700">Debug: Image Data</summary>
-          <div className="mt-4 space-y-4 text-xs font-mono overflow-auto">
 
-            {/* Images Array */}
-            <div>
-              <h4 className="font-bold text-blue-600">Calculated Images Array ({images.length})</h4>
-              <div className="bg-white p-2 rounded border border-gray-200 mt-1">
-                {images.map((img, i) => (
-                  <div key={i} className="mb-1 pb-1 border-b border-gray-100 last:border-0 truncate">
-                    <span className="font-bold mr-2">[{i}]:</span>
-                    <a href={img} target="_blank" rel="noreferrer" className="text-blue-500 hover:underline">{img}</a>
-                  </div>
-                ))}
-                {images.length === 0 && <span className="text-gray-400">No images found</span>}
-              </div>
+      {/* Adjust Stock Modal */}
+      <Dialog open={showAdjustModal} onOpenChange={setShowAdjustModal}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Adjust Stock Quantity</DialogTitle>
+            <DialogDescription>Update the total available stock for this item.</DialogDescription>
+          </DialogHeader>
+          <div className="py-4 space-y-4">
+            <div className="space-y-2">
+              <Label>Total Quantity</Label>
+              <Input
+                type="number"
+                min="0"
+                value={adjustQuantity}
+                onChange={(e) => setAdjustQuantity(parseInt(e.target.value) || 0)}
+              />
             </div>
-
-            {/* Main Images */}
-            {isEnhancedStock(product) && (
-              <div>
-                <h4 className="font-bold text-blue-600">Main Images (Basic Info)</h4>
-                <pre className="bg-white p-2 rounded border border-gray-200 mt-1 overflow-x-auto">
-                  {JSON.stringify(product.mainImages, null, 2)}
-                </pre>
-              </div>
-            )}
-
-            {/* Colors & their images */}
-            {isEnhancedStock(product) && (
-              <div>
-                <h4 className="font-bold text-purple-600">Color Variant Images</h4>
-                <div className="bg-white p-2 rounded border border-gray-200 mt-1 space-y-2">
-                  {product.colors?.map((c, i) => (
-                    <div key={i} className="border-b border-gray-100 pb-2 last:border-0">
-                      <div className="font-bold">{c.name} ({c.id})</div>
-                      <div className="pl-4">
-                        <div>Pattern: {c.patternImage ? '✅ Present' : '❌ None'}</div>
-                        <div>Images: {c.images?.length || 0}</div>
-                        {c.images?.map((img, j) => (
-                          <div key={j} className="pl-2 truncate text-gray-500">{j}: {img}</div>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Combinations & their images */}
-            {isEnhancedStock(product) && (
-              <div>
-                <h4 className="font-bold text-green-600">Combination Images</h4>
-                <div className="bg-white p-2 rounded border border-gray-200 mt-1">
-                  <div className="grid grid-cols-1 gap-2">
-                    {product.combinations?.filter(c => c.images?.length > 0).map((c, i) => (
-                      <div key={i} className="truncate">
-                        <span className="font-bold">{c.colorId}|{c.sizeId}:</span> {c.images.length} images
-                      </div>
-                    ))}
-                    {product.combinations?.filter(c => c.images?.length > 0).length === 0 && (
-                      <span className="text-gray-400">No combination-specific images</span>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
-
           </div>
-        </details>
-      </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowAdjustModal(false)} disabled={isAdjusting}>Cancel</Button>
+            <Button onClick={submitAdjustStock} disabled={isAdjusting}>
+              {isAdjusting ? 'Saving...' : 'Save Changes'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

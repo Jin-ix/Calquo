@@ -161,6 +161,7 @@ export function StockProvider({ children }: StockProviderProps) {
       offerType: dbItem.offer_type,
       offerTimeWeeks: dbItem.offer_time_weeks ? parseInt(dbItem.offer_time_weeks) : undefined,
       offerMinQuantity: dbItem.offer_min_quantity ? parseInt(dbItem.offer_min_quantity) : undefined,
+      offerValidUntil: dbItem.offer_valid_until,
       supplier: dbItem.seller_company || dbItem.supplier || 'Unknown Supplier',
       supplierType: dbItem.supplier_type || 'manufacturer',
       location: dbItem.location || 'Mumbai',
@@ -413,6 +414,7 @@ export function StockProvider({ children }: StockProviderProps) {
       offerType: 'offer_type',
       offerTimeWeeks: 'offer_time_weeks',
       offerMinQuantity: 'offer_min_quantity',
+      offerValidUntil: 'offer_valid_until',
       supplier: ['supplier', 'seller_company'],
       seller_company: 'seller_company',
       sellerId: 'seller_id',
@@ -606,10 +608,25 @@ export function StockProvider({ children }: StockProviderProps) {
       if (success) {
         console.log('✅ [StockProvider] Item updated successfully');
         
-        // Refresh local state (simplest way to ensure all derived data is correct)
-        await refreshStock();
+        // Fetch the updated item from the backend to ensure consistency
+        const { data: updatedItem, error } = await supabase
+          .from('stock_items')
+          .select('*')
+          .eq('id', stockId)
+          .single();
+
+        if (!error && updatedItem) {
+          const mappedItem = mapSupabaseToStock(updatedItem);
+          const [displayReadyItem] = createDisplayReadyStock([mappedItem]);
+          
+          setAllStock(prev => prev.map(item => item.id === stockId ? displayReadyItem : item));
+          setUserStock(prev => prev.map(item => item.id === stockId ? displayReadyItem : item));
+        } else {
+          // Fallback to optimistic update if fetch fails
+          setAllStock(prev => prev.map(item => item.id === stockId ? { ...item, ...updates } : item));
+          setUserStock(prev => prev.map(item => item.id === stockId ? { ...item, ...updates } : item));
+        }
         
-        toast.success('Product updated successfully!');
         return true;
       } else {
         // Fallback to API
@@ -617,8 +634,21 @@ export function StockProvider({ children }: StockProviderProps) {
         const response = await stockAPI.updateStock(stockId, mappedUpdates);
         
         if (response.success) {
-          refreshStock();
-          toast.success('Product updated successfully!');
+          const { data: updatedItem, error } = await supabase
+            .from('stock_items')
+            .select('*')
+            .eq('id', stockId)
+            .single();
+
+          if (!error && updatedItem) {
+            const mappedItem = mapSupabaseToStock(updatedItem);
+            const [displayReadyItem] = createDisplayReadyStock([mappedItem]);
+            setAllStock(prev => prev.map(item => item.id === stockId ? displayReadyItem : item));
+            setUserStock(prev => prev.map(item => item.id === stockId ? displayReadyItem : item));
+          } else {
+            setAllStock(prev => prev.map(item => item.id === stockId ? { ...item, ...updates } : item));
+            setUserStock(prev => prev.map(item => item.id === stockId ? { ...item, ...updates } : item));
+          }
           return true;
         }
       }
@@ -743,8 +773,7 @@ export function StockProvider({ children }: StockProviderProps) {
     unsubscribe = listenToCollection(
       'stock_items',
       [
-        where('seller_company', '==', user.company), 
-        where('status', '==', 'active'),
+        where('seller_company', '==', user.company),
         orderBy('created_at', 'desc')
       ],
       (data) => {

@@ -1,671 +1,347 @@
-import { 
-  collection, 
-  addDoc, 
-  updateDoc, 
-  doc, 
-  getDoc, 
-  query, 
-  where, 
-  onSnapshot, 
-  serverTimestamp,
-  orderBy,
-  getDocs,
-  deleteDoc,
-  or
-} from 'firebase/firestore';
-import { firebaseDb } from './config';
-import { PurchaseRequest, PurchaseRequestStatus, FinancialPaymentRequest } from '../../types/purchaseTypes';
+/**
+ * purchaseService.ts
+ * Fully migrated to Supabase. All Firebase/Firestore references removed.
+ * Uses addDocument / updateDocument / getDocuments from the Supabase shim.
+ */
 
-const PURCHASE_REQUESTS_COLLECTION = 'purchase_requests';
-const FINANCIAL_REQUESTS_COLLECTION = 'financial_payment_requests';
-const ORDERS_COLLECTION = 'orders';
-const NOTIFICATIONS_COLLECTION = 'notifications';
+import { addDocument, updateDocument, getDocuments } from './firestore';
+import { supabase } from '../supabase/client';
+import { PurchaseRequest, PurchaseRequestStatus } from '../../types/purchaseTypes';
 
-// --- MOCK STORAGE FOR DEMO/FALLBACK ---
-// Used when Firestore is not configured or fails
-const MOCK_STORAGE_KEY = 'calico_mock_requests';
+const PURCHASE_REQUESTS_TABLE = 'purchase_requests';
+const ORDERS_TABLE = 'orders';
+const NOTIFICATIONS_TABLE = 'notifications';
+const PAYMENTS_TABLE = 'payments';
 
-const getMockRequests = (): PurchaseRequest[] => {
-  try {
-    return JSON.parse(localStorage.getItem(MOCK_STORAGE_KEY) || '[]');
-  } catch (e) { return []; }
-};
-
-const saveMockRequests = (requests: PurchaseRequest[]) => {
-  localStorage.setItem(MOCK_STORAGE_KEY, JSON.stringify(requests));
-};
-
-const mockListeners: Map<string, (requests: PurchaseRequest[]) => void> = new Map();
-
-const notifyMockListeners = () => {
-  const requests = getMockRequests();
-  mockListeners.forEach(callback => callback(requests));
-};
-
-// --- END MOCK STORAGE ---
-
-// Helper to send notification
+// ---------------------------------------------------------------------------
+// Internal helper: persist a notification row in Supabase
+// ---------------------------------------------------------------------------
 const sendNotification = async (
-  recipientId: string, 
-  role: string, 
-  title: string, 
-  message: string, 
+  recipientId: string,
+  title: string,
+  message: string,
   type: string,
   data?: any
 ) => {
-  if (!firebaseDb) {
-    console.log(`[Mock Notification] To: ${recipientId} (${role}) - ${title}: ${message}`);
-    return;
-  }
-
   try {
-    // notifications schema: id, user_id (uuid FK → companies.id), content, is_read, read_at, created_at
-    await addDoc(collection(firebaseDb, NOTIFICATIONS_COLLECTION), {
-      user_id:    recipientId,
-      content:    `${title}: ${message}`,   // schema has single 'content' column
-      is_read:    false,
-      created_at: new Date().toISOString(),
-      // Extra fields stored but not schema columns — harmless as jsonb-style extras
+    if (!recipientId) return;
+    await addDocument(NOTIFICATIONS_TABLE, {
+      user_id: recipientId,
+      content: `${title}: ${message}`,
       title,
       message,
       type,
-      data,
-      recipientRole: role,
+      data: data || {},
+      is_read: false,
     });
   } catch (error) {
-    console.error('Error sending notification:', error);
+    // Non-fatal — log and continue
+    console.warn('[purchaseService] sendNotification failed:', error);
   }
 };
 
+// ---------------------------------------------------------------------------
+// purchaseService — all methods wired to Supabase
+// ---------------------------------------------------------------------------
 export const purchaseService = {
-  // Create a new purchase request
-  createRequest: async (requestData: Omit<PurchaseRequest, 'id' | 'createdAt' | 'updatedAt'>) => {
-    if (!firebaseDb) {
-      console.warn('Firestore not available, using mock storage for createRequest');
-      const requests = getMockRequests();
-      const newRequest: PurchaseRequest = {
-        ...requestData,
-        id: 'mock_req_' + Date.now(),
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      };
-      requests.push(newRequest);
-      saveMockRequests(requests);
-      notifyMockListeners();
-      return newRequest.id;
-    }
 
+  // ─── Create a new purchase request ─────────────────────────────────────
+  createRequest: async (requestData: Omit<PurchaseRequest, 'id' | 'createdAt' | 'updatedAt'>) => {
     try {
-      const docRef = await addDoc(collection(firebaseDb, PURCHASE_REQUESTS_COLLECTION), {
-        ...requestData,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      });
+      const payload = {
+        buyer_id:      requestData.buyerId,
+        buyer_name:    requestData.buyerName,
+        buyer_company: requestData.buyerCompany,
+        buyer_gst:     requestData.buyerGST || null,
+        seller_id:     requestData.sellerId,
+        seller_name:   requestData.sellerName,
+        seller_company: requestData.sellerCompany || requestData.sellerName,
+        stock_id:      requestData.stockId,
+        stock_name:    requestData.stockName,
+        stock_image:   requestData.stockImage || null,
+        items:         requestData.items,
+        total_amount:  requestData.totalAmount,
+        total_quantity: requestData.totalQuantity,
+        status:        requestData.status || 'pending_seller_ack',
+        payment_mode:  (requestData as any).paymentMode || 'direct',
+        special_instructions: requestData.specialInstructions || null,
+        logistics_agent_id: requestData.logisticsAgentId || null,
+        financial_agent_id: requestData.financialAgentId || null,
+      };
+
+      const requestId = await addDocument(PURCHASE_REQUESTS_TABLE, payload);
+
+      if (!requestId) throw new Error('Failed to get request ID from Supabase insert');
 
       // Notify Seller
-      const sellerId = requestData.sellerId;
-      if (sellerId) {
+      if (requestData.sellerId) {
         await sendNotification(
-          sellerId,
-          'seller',
+          requestData.sellerId,
           '🛍️ New Purchase Request',
           `New request from ${requestData.buyerCompany || requestData.buyerName} for ${requestData.stockName}`,
           'purchase_request_received',
-          { requestId: docRef.id }
+          { requestId }
         );
       }
 
-      // Notify Logistics Agent
-      const logisticsAgentId = requestData.logisticsAgentId;
-      if (logisticsAgentId) {
+      // Notify Logistics Agent (if provided)
+      if (requestData.logisticsAgentId) {
         await sendNotification(
-          logisticsAgentId,
-          'logistics',
+          requestData.logisticsAgentId,
           '🚚 New Delivery Request',
-          `You've been assigned to deliver ${requestData.stockName} from ${requestData.sellerCompany || requestData.sellerName} to ${requestData.buyerCompany || requestData.buyerName}`,
+          `You've been assigned to deliver ${requestData.stockName}`,
           'logistics_request_received',
-          { requestId: docRef.id }
+          { requestId }
         );
       }
 
-      // Notify Financial Agent (if payment mode is 'finance')
-      const financialAgentId = requestData.financialAgentId;
-      if (financialAgentId && requestData.paymentMode === 'finance') {
-        await sendNotification(
-          financialAgentId,
-          'financial',
-          '💰 New Payment Request',
-          `Payment request for ${requestData.buyerCompany || requestData.buyerName} - ₹${requestData.totalAmount.toLocaleString()}`,
-          'financial_request_received',
-          { requestId: docRef.id }
-        );
-      }
-
-      return docRef.id;
+      return requestId;
     } catch (error) {
-      console.error('Error creating purchase request:', error);
-      
-      // Fallback to mock if Firestore fails (e.g. permission error)
-      const requests = getMockRequests();
-      const newRequest: PurchaseRequest = {
-        ...requestData,
-        id: 'mock_req_' + Date.now(),
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      };
-      requests.push(newRequest);
-      saveMockRequests(requests);
-      notifyMockListeners();
-      return newRequest.id;
+      console.error('[purchaseService] createRequest error:', error);
+      throw error;
     }
   },
 
-  // Update request status (e.g., Acknowledge)
+  // ─── Update request status ──────────────────────────────────────────────
   updateStatus: async (requestId: string, status: PurchaseRequestStatus, additionalData?: any) => {
-    if (!firebaseDb) {
-      const requests = getMockRequests();
-      const index = requests.findIndex(r => r.id === requestId);
-      if (index !== -1) {
-        requests[index] = { ...requests[index], status, ...additionalData, updatedAt: new Date().toISOString() };
-        saveMockRequests(requests);
-        notifyMockListeners();
-      }
-      return;
-    }
-
     try {
-      const docRef = doc(firebaseDb, PURCHASE_REQUESTS_COLLECTION, requestId);
-      const docSnap = await getDoc(docRef);
-      
-      // If not found in Firestore, check mock
-      if (!docSnap.exists()) {
-         const requests = getMockRequests();
-         const index = requests.findIndex(r => r.id === requestId);
-         if (index !== -1) {
-            requests[index] = { ...requests[index], status, ...additionalData, updatedAt: new Date().toISOString() };
-            saveMockRequests(requests);
-            notifyMockListeners();
-            return;
-         }
-         throw new Error('Request not found');
-      }
-      
-      const data = docSnap.data() as PurchaseRequest;
-
-      await updateDoc(docRef, {
+      await updateDocument(PURCHASE_REQUESTS_TABLE, requestId, {
         status,
-        updatedAt: new Date().toISOString(),
-        ...additionalData
+        ...additionalData,
       });
 
-      // Notify Buyer on Acknowledge
+      // Fetch to get buyer_id for notification
+      const rows = await getDocuments(PURCHASE_REQUESTS_TABLE, []);
+      const req = rows.find((r: any) => r.id === requestId);
+      if (!req) return;
+
       if (status === 'seller_acknowledged') {
         await sendNotification(
-          data.buyerId,
-          'buyer',
-          'Request Acknowledged',
-          `Your purchase request has been acknowledged by ${data.sellerName}`,
+          req.buyer_id,
+          '✅ Request Acknowledged',
+          `Your purchase request for ${req.stock_name} has been acknowledged`,
           'request_acknowledged',
           { requestId }
         );
       } else if (status === 'rejected') {
-        // Notify Buyer on Rejection
         await sendNotification(
-          data.buyerId,
-          'buyer',
-          'Request Rejected',
-          `Your purchase request for ${data.stockName} was rejected by ${data.sellerName || 'the seller'}.`,
+          req.buyer_id,
+          '❌ Request Rejected',
+          `Your purchase request for ${req.stock_name} was rejected`,
           'request_rejected',
           { requestId }
         );
       }
     } catch (error) {
-      console.error('Error updating request status:', error);
+      console.error('[purchaseService] updateStatus error:', error);
       throw error;
     }
   },
 
-  // Update request with any fields
+  // ─── Update arbitrary request fields ───────────────────────────────────
   updateRequest: async (requestId: string, data: Partial<PurchaseRequest>) => {
-    if (!firebaseDb) {
-        const requests = getMockRequests();
-        const index = requests.findIndex(r => r.id === requestId);
-        if (index !== -1) {
-            requests[index] = { ...requests[index], ...data, updatedAt: new Date().toISOString() };
-            saveMockRequests(requests);
-            notifyMockListeners();
-        }
-        return;
-    }
-    
     try {
-        const docRef = doc(firebaseDb, PURCHASE_REQUESTS_COLLECTION, requestId);
-        const docSnap = await getDoc(docRef);
-        
-        // Mock fallback
-        if (!docSnap.exists()) {
-             const requests = getMockRequests();
-             const index = requests.findIndex(r => r.id === requestId);
-             if (index !== -1) {
-                requests[index] = { ...requests[index], ...data, updatedAt: new Date().toISOString() };
-                saveMockRequests(requests);
-                notifyMockListeners();
-                return;
-             }
-        }
+      // Map camelCase to snake_case where needed
+      const payload: Record<string, any> = { ...data };
+      if ('buyerId' in data)   { payload.buyer_id = data.buyerId; delete payload.buyerId; }
+      if ('sellerId' in data)  { payload.seller_id = data.sellerId; delete payload.sellerId; }
+      if ('totalAmount' in data) { payload.total_amount = data.totalAmount; delete payload.totalAmount; }
+      if ('updatedAt' in data) delete payload.updatedAt;  // managed by shim
 
-        await updateDoc(docRef, {
-            ...data,
-            updatedAt: new Date().toISOString()
-        });
+      await updateDocument(PURCHASE_REQUESTS_TABLE, requestId, payload);
     } catch (error) {
-        console.error('Error updating request:', error);
-        throw error;
-    }
-  },
-
-  // Assign financial agent
-  assignAgent: async (requestId: string, agentId: string, agentName: string) => {
-    if (!firebaseDb) {
-        const requests = getMockRequests();
-        const index = requests.findIndex(r => r.id === requestId);
-        if (index !== -1) {
-            requests[index] = { 
-                ...requests[index], 
-                status: 'pending_agent',
-                financialAgentId: agentId,
-                financialAgentName: agentName,
-                updatedAt: new Date().toISOString() 
-            };
-            saveMockRequests(requests);
-            notifyMockListeners();
-        }
-        return;
-    }
-
-    try {
-      // Update purchase request
-      const docRef = doc(firebaseDb, PURCHASE_REQUESTS_COLLECTION, requestId);
-      const docSnap = await getDoc(docRef);
-      
-      // Mock fallback
-      if (!docSnap.exists()) {
-         const requests = getMockRequests();
-         const index = requests.findIndex(r => r.id === requestId);
-         if (index !== -1) {
-            requests[index] = { 
-                ...requests[index], 
-                status: 'pending_agent',
-                financialAgentId: agentId,
-                financialAgentName: agentName,
-                updatedAt: new Date().toISOString() 
-            };
-            saveMockRequests(requests);
-            notifyMockListeners();
-            return;
-         }
-         throw new Error('Request not found');
-      }
-      
-      const data = docSnap.data() as PurchaseRequest;
-
-      await updateDoc(docRef, {
-        status: 'pending_agent',
-        financialAgentId: agentId,
-        financialAgentName: agentName,
-        updatedAt: new Date().toISOString()
-      });
-
-      // Create financial payment request
-      await addDoc(collection(firebaseDb, FINANCIAL_REQUESTS_COLLECTION), {
-        purchaseRequestId: requestId,
-        amount: data.totalAmount,
-        agentId,
-        buyerId: data.buyerId,
-        sellerId: data.sellerId,
-        stockName: data.stockName, // Useful for display
-        buyerCompany: data.buyerCompany,
-        sellerCompany: data.sellerCompany,
-        status: 'pending',
-        createdAt: new Date().toISOString()
-      });
-
-      // Notify Agent
-      await sendNotification(
-        agentId,
-        'financial',
-        'New Payment Request',
-        `Payment request for ${data.buyerCompany}`,
-        'payment_request_received',
-        { requestId }
-      );
-
-    } catch (error) {
-      console.error('Error assigning agent:', error);
+      console.error('[purchaseService] updateRequest error:', error);
       throw error;
     }
   },
 
-  // Complete payment (by Agent or Direct)
-  completePayment: async (requestId: string, transactionId: string, paymentMethod: 'agent' | 'direct') => {
-    if (!firebaseDb) {
-        const requests = getMockRequests();
-        const index = requests.findIndex(r => r.id === requestId);
-        if (index !== -1) {
-            requests[index] = { 
-                ...requests[index], 
-                status: 'paid',
-                updatedAt: new Date().toISOString() 
-            };
-            saveMockRequests(requests);
-            notifyMockListeners();
-        }
-        return true;
-    }
-
+  // ─── Assign financial agent ─────────────────────────────────────────────
+  assignAgent: async (requestId: string, agentId: string, agentName: string) => {
     try {
-      const requestRef = doc(firebaseDb, PURCHASE_REQUESTS_COLLECTION, requestId);
-      const requestSnap = await getDoc(requestRef);
-      
-      // Mock fallback
-      if (!requestSnap.exists()) {
-         const requests = getMockRequests();
-         const index = requests.findIndex(r => r.id === requestId);
-         if (index !== -1) {
-            requests[index] = { 
-                ...requests[index], 
-                status: 'paid',
-                updatedAt: new Date().toISOString() 
-            };
-            saveMockRequests(requests);
-            notifyMockListeners();
-            return true;
-         }
-         throw new Error('Request not found');
-      }
-      
-      const requestData = requestSnap.data() as PurchaseRequest;
-
-      // Update purchase request status
-      await updateDoc(requestRef, {
-        status: 'paid',
-        updatedAt: new Date().toISOString()
+      await updateDocument(PURCHASE_REQUESTS_TABLE, requestId, {
+        status: 'pending_agent',
+        financial_agent_id: agentId,
+        financial_agent_name: agentName,
       });
 
-      // If paid by agent, update financial request
-      if (paymentMethod === 'agent' && requestData.financialAgentId) {
-        const finQuery = query(
-          collection(firebaseDb, FINANCIAL_REQUESTS_COLLECTION), 
-          where('purchaseRequestId', '==', requestId),
-          where('agentId', '==', requestData.financialAgentId),
-          where('status', '==', 'pending')
-        );
-        
-        const finDocs = await getDocs(finQuery);
-        finDocs.forEach(async (d) => {
-          await updateDoc(d.ref, {
-            status: 'completed',
-            completedAt: new Date().toISOString(),
-            transactionId
-          });
+      // Create a payment request record
+      const rows = await getDocuments(PURCHASE_REQUESTS_TABLE, []);
+      const req = rows.find((r: any) => r.id === requestId);
+
+      if (req) {
+        await addDocument(PAYMENTS_TABLE, {
+          purchase_request_id: requestId,
+          amount: req.total_amount,
+          agent_id: agentId,
+          buyer_id: req.buyer_id,
+          seller_id: req.seller_id,
+          stock_name: req.stock_name,
+          buyer_company: req.buyer_company,
+          seller_company: req.seller_company,
+          status: 'pending',
         });
-      }
 
-      // Create Order
-      const orderRef = await addDoc(collection(firebaseDb, ORDERS_COLLECTION), {
-        ...requestData,
-        orderDate: new Date().toISOString(),
-        paymentStatus: 'paid',
-        paymentMethod: paymentMethod,
-        transactionId,
-        status: 'confirmed' // Initial order status
+        await sendNotification(
+          agentId,
+          '💰 New Payment Request',
+          `Payment request for ${req.buyer_company} — ₹${req.total_amount?.toLocaleString()}`,
+          'payment_request_received',
+          { requestId }
+        );
+      }
+    } catch (error) {
+      console.error('[purchaseService] assignAgent error:', error);
+      throw error;
+    }
+  },
+
+  // ─── Complete payment ───────────────────────────────────────────────────
+  completePayment: async (requestId: string, transactionId: string, paymentMethod: 'agent' | 'direct') => {
+    try {
+      await updateDocument(PURCHASE_REQUESTS_TABLE, requestId, { status: 'paid' });
+
+      const rows = await getDocuments(PURCHASE_REQUESTS_TABLE, []);
+      const req = rows.find((r: any) => r.id === requestId);
+      if (!req) throw new Error('Purchase request not found');
+
+      // Create order
+      const orderId = await addDocument(ORDERS_TABLE, {
+        purchase_request_id: requestId,
+        buyer_id:    req.buyer_id,
+        seller_id:   req.seller_id,
+        items:       req.items,
+        total_amount: req.total_amount,
+        status:      'confirmed',
+        payment_status: 'paid',
+        payment_method: paymentMethod,
+        transaction_id: transactionId,
+        order_date:  new Date().toISOString(),
       });
+
+      // Update payment record if agent-based
+      if (paymentMethod === 'agent' && req.financial_agent_id) {
+        const payments = await getDocuments(PAYMENTS_TABLE, []);
+        const payment = payments.find((p: any) => p.purchase_request_id === requestId && p.status === 'pending');
+        if (payment?.id) {
+          await updateDocument(PAYMENTS_TABLE, payment.id, {
+            status: 'completed',
+            transaction_id: transactionId,
+            completed_at: new Date().toISOString(),
+          });
+        }
+      }
 
       // Notify Buyer
-      await sendNotification(
-        requestData.buyerId,
-        'buyer',
-        'Order Confirmed',
-        `Payment successful. Order confirmed for ${requestData.stockName}`,
-        'order_confirmed',
-        { orderId: orderRef.id }
-      );
-
+      await sendNotification(req.buyer_id, '✅ Order Confirmed', `Payment successful for ${req.stock_name}`, 'order_confirmed', { orderId });
       // Notify Seller
-      await sendNotification(
-        requestData.sellerId,
-        'seller',
-        'Order Confirmed',
-        `Payment received. Order confirmed for ${requestData.stockName}`,
-        'order_confirmed',
-        { orderId: orderRef.id }
-      );
-
-      // Notify Agent if involved
-      if (paymentMethod === 'agent' && requestData.financialAgentId) {
-        await sendNotification(
-          requestData.financialAgentId,
-          'financial',
-          'Payment Successful',
-          `Payment processed successfully for ${requestData.stockName}`,
-          'payment_success',
-          { orderId: orderRef.id }
-        );
-      }
+      await sendNotification(req.seller_id, '📦 Order Received', `New confirmed order from ${req.buyer_company}`, 'order_confirmed', { orderId });
 
       return true;
     } catch (error) {
-      console.error('Error completing payment:', error);
+      console.error('[purchaseService] completePayment error:', error);
       throw error;
     }
   },
 
-  // Mark request as paid (used when order is created via BuyNowFlow)
+  // ─── Mark request as paid (called from BuyNowFlow) ─────────────────────
   markRequestPaid: async (requestId: string, orderId: string) => {
-    if (!firebaseDb) { return; }
     try {
-      const requestRef = doc(firebaseDb, PURCHASE_REQUESTS_COLLECTION, requestId);
-      const requestSnap = await getDoc(requestRef);
-      
-      // Mock fallback
-      if (!requestSnap.exists()) {
-        const requests = getMockRequests();
-        const index = requests.findIndex(r => r.id === requestId);
-        if (index !== -1) {
-            requests[index] = { 
-                ...requests[index], 
-                status: 'paid',
-                linkedOrderId: orderId,
-                updatedAt: new Date().toISOString()
-            };
-            saveMockRequests(requests);
-            notifyMockListeners();
-        }
-        return;
-      }
-
-      const requestData = requestSnap.data() as PurchaseRequest;
-
-      await updateDoc(requestRef, {
+      await updateDocument(PURCHASE_REQUESTS_TABLE, requestId, {
         status: 'paid',
-        linkedOrderId: orderId,
-        updatedAt: new Date().toISOString()
+        linked_order_id: orderId,
       });
 
-      // Notify Buyer
-      await sendNotification(
-        requestData.buyerId,
-        'buyer',
-        'Order Confirmed',
-        `Order placed successfully. Order ID: ${orderId}`,
-        'order_confirmed',
-        { orderId }
-      );
+      const rows = await getDocuments(PURCHASE_REQUESTS_TABLE, []);
+      const req = rows.find((r: any) => r.id === requestId);
+      if (!req) return;
 
-      // Notify Seller
-      await sendNotification(
-        requestData.sellerId,
-        'seller',
-        'Order Confirmed',
-        `New order received from ${requestData.buyerCompany}. Order ID: ${orderId}`,
-        'order_confirmed',
-        { orderId }
-      );
-
+      await sendNotification(req.buyer_id, '✅ Order Confirmed', `Order placed successfully. Order ID: ${orderId}`, 'order_confirmed', { orderId });
+      await sendNotification(req.seller_id, '📦 New Order', `New order from ${req.buyer_company}. ID: ${orderId}`, 'order_confirmed', { orderId });
     } catch (error) {
-      console.error('Error marking request as paid:', error);
+      console.error('[purchaseService] markRequestPaid error:', error);
       throw error;
     }
   },
 
-  // Listen to requests for a user (Buyer or Seller)
+  // ─── Subscribe to requests for a user ──────────────────────────────────
   subscribeToRequests: (
-    userId: string, 
-    role: 'buyer' | 'seller' | 'financial', 
+    userId: string,
+    role: 'buyer' | 'seller' | 'financial',
     callback: (requests: PurchaseRequest[]) => void
   ) => {
-    
-    // Helper to filter mock requests
-    const getFilteredMockRequests = () => {
-        return getMockRequests().filter(r => {
-            if (role === 'buyer') return r.buyerId === userId;
-            if (role === 'seller') return r.sellerId === userId;
-            if (role === 'financial') return r.financialAgentId === userId;
-            return false;
-        });
-    };
-
-    // If no Firestore, just use mock listener
-    if (!firebaseDb) {
-        console.warn('Firestore not available, using mock storage for subscription');
-        const filterAndCallback = () => {
-            const filtered = getFilteredMockRequests();
-            filtered.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-            callback(filtered);
-        };
-
-        // Initial call
-        filterAndCallback();
-
-        // Subscribe
-        const listenerId = Math.random().toString();
-        mockListeners.set(listenerId, filterAndCallback);
-        return () => mockListeners.delete(listenerId);
+    if (!userId) {
+      callback([]);
+      return () => {};
     }
 
-    // If Firestore is available, we need to combine both sources
-    // We'll keep local state for both and merge them whenever either changes
-    let firestoreRequests: PurchaseRequest[] = [];
-    let mockRequests: PurchaseRequest[] = getFilteredMockRequests();
+    const column = role === 'buyer' ? 'buyer_id' : role === 'seller' ? 'seller_id' : 'financial_agent_id';
 
-    const mergeAndCallback = () => {
-        const allRequests = [...firestoreRequests, ...mockRequests];
-        
-        const requestMap = new Map<string, PurchaseRequest>();
-        
-        allRequests.forEach(req => {
-            const existing = requestMap.get(req.id);
-            if (!existing) {
-                requestMap.set(req.id, req);
-            } else {
-                // If duplicate, use the one with newer updatedAt
-                const existingTime = new Date(existing.updatedAt).getTime();
-                const newTime = new Date(req.updatedAt).getTime();
-                if (newTime > existingTime) {
-                    requestMap.set(req.id, req);
-                }
-            }
-        });
+    // Initial fetch
+    const fetchData = async () => {
+      try {
+        const { data, error } = await supabase
+          .from(PURCHASE_REQUESTS_TABLE)
+          .select('*')
+          .eq(column, userId)
+          .order('created_at', { ascending: false });
 
-        const merged = Array.from(requestMap.values());
-        merged.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-        callback(merged);
-    };
-
-    // 1. Setup Firestore Listener
-    let unsubFirestore = () => {};
-    try {
-        let q;
-        const collectionRef = collection(firebaseDb, PURCHASE_REQUESTS_COLLECTION);
-
-        if (role === 'buyer') {
-          console.log("QUERYING WITH buyer_id:", userId);
-          q = query(
-            collectionRef, 
-            where('buyer_id', '==', userId)
-          );
-        } else if (role === 'seller') {
-          console.log("QUERYING WITH seller_id:", userId);
-          q = query(
-            collectionRef, 
-            where('seller_id', '==', userId)
-          );
-        } else if (role === 'financial') {
-          console.log("QUERYING WITH financial_agent_id:", userId);
-          q = query(collectionRef, where('financial_agent_id', '==', userId));
+        if (error) {
+          console.error('[purchaseService] subscribeToRequests fetch error:', error);
+          callback([]);
+          return;
         }
 
-        if (q) {
-            unsubFirestore = onSnapshot(q, (snapshot) => {
-              firestoreRequests = snapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
-              })) as PurchaseRequest[];
-              console.log(`Firestore subscription update (${role}): ${firestoreRequests.length} requests found`);
-              mergeAndCallback();
-            }, (error) => {
-                console.error("Firestore subscription error:", error);
-            });
-        }
-    } catch (e) {
-        console.error("Error setting up Firestore subscription:", e);
-    }
-
-    // 2. Setup Mock Listener
-    const listenerId = Math.random().toString();
-    const mockListener = () => {
-        mockRequests = getFilteredMockRequests();
-        mergeAndCallback();
+        // Map snake_case → camelCase for compatibility with existing components
+        const mapped = (data || []).map((r: any) => ({
+          ...r,
+          id:            r.id,
+          buyerId:       r.buyer_id,
+          buyerName:     r.buyer_name,
+          buyerCompany:  r.buyer_company,
+          sellerId:      r.seller_id,
+          sellerName:    r.seller_name,
+          sellerCompany: r.seller_company,
+          stockId:       r.stock_id,
+          stockName:     r.stock_name,
+          stockImage:    r.stock_image,
+          totalAmount:   r.total_amount,
+          totalQuantity: r.total_quantity,
+          createdAt:     r.created_at,
+          updatedAt:     r.updated_at,
+          logisticsAgentId:  r.logistics_agent_id,
+          financialAgentId:  r.financial_agent_id,
+          specialInstructions: r.special_instructions,
+        })) as PurchaseRequest[];
+        callback(mapped);
+      } catch (e) {
+        console.error('[purchaseService] subscribeToRequests error:', e);
+        callback([]);
+      }
     };
-    mockListeners.set(listenerId, mockListener);
 
-    // Initial merge (in case Firestore takes time or fails immediately)
-    mergeAndCallback();
+    fetchData();
 
-    // Return unsubscribe function that cleans up both
-    return () => {
-        unsubFirestore();
-        mockListeners.delete(listenerId);
-    };
+    // Real-time subscription via Supabase Realtime
+    const channel = supabase
+      .channel(`purchase_requests_${role}_${userId}_${Date.now()}`)
+      .on(
+        'postgres_changes' as any,
+        { event: '*', schema: 'public', table: PURCHASE_REQUESTS_TABLE, filter: `${column}=eq.${userId}` },
+        () => fetchData()
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
   },
 
-  // Delete a request
+  // ─── Delete a request ───────────────────────────────────────────────────
   deleteRequest: async (requestId: string) => {
-    if (!firebaseDb) {
-        const requests = getMockRequests();
-        const filtered = requests.filter(r => r.id !== requestId);
-        saveMockRequests(filtered);
-        notifyMockListeners();
-        return;
-    }
-
     try {
-      await deleteDoc(doc(firebaseDb, PURCHASE_REQUESTS_COLLECTION, requestId));
-      
-      // Also delete from mock if it exists there
-      const requests = getMockRequests();
-      if (requests.some(r => r.id === requestId)) {
-          const filtered = requests.filter(r => r.id !== requestId);
-          saveMockRequests(filtered);
-          notifyMockListeners();
-      }
+      const { error } = await supabase.from(PURCHASE_REQUESTS_TABLE).delete().eq('id', requestId);
+      if (error) throw error;
     } catch (error) {
-      console.error('Error deleting request:', error);
-      // If firestore fails, try deleting from mock anyway
-      const requests = getMockRequests();
-      const filtered = requests.filter(r => r.id !== requestId);
-      saveMockRequests(filtered);
-      notifyMockListeners();
+      console.error('[purchaseService] deleteRequest error:', error);
+      throw error;
     }
-  }
+  },
 };

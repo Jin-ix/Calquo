@@ -43,10 +43,19 @@ interface MyStockViewProps {
 
 export function MyStockView({ onAddStock, onEditStock, onViewDetails }: MyStockViewProps) {
   const { user } = useAuth();
-  const { bulkDeleteStock, bulkUpdateStockStatus } = useStock();
-  const [myStock, setMyStock] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { bulkDeleteStock, bulkUpdateStockStatus, userStock, isLoading: contextLoading, error: contextError } = useStock();
+  const [statusFilter, setStatusFilter] = useState<'active' | 'inactive' | 'draft'>('active');
+
+  // Derive myStock from userStock and apply status filter
+  const myStock = useMemo(() => {
+    return userStock.filter((stock: any) => {
+      const stockStatus = stock.status || 'active'; // Default to active if missing
+      return stockStatus === statusFilter;
+    });
+  }, [userStock, statusFilter]);
+
+  const isLoading = contextLoading && userStock.length === 0;
+  const error = contextError;
 
   // Filter and search state
   const [searchQuery, setSearchQuery] = useState('');
@@ -55,7 +64,6 @@ export function MyStockView({ onAddStock, onEditStock, onViewDetails }: MyStockV
   const [sortBy, setSortBy] = useState<'name' | 'price' | 'recent' | 'quantity'>('recent');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
-  const [statusFilter, setStatusFilter] = useState<'active' | 'inactive' | 'draft'>('active');
   const [showFilters, setShowFilters] = useState(false);
 
   // Selection Mode
@@ -73,95 +81,6 @@ export function MyStockView({ onAddStock, onEditStock, onViewDetails }: MyStockV
     }, 300);
     return () => clearTimeout(timer);
   }, [searchQuery]);
-
-  // Firebase real-time listener for user's stock
-  useEffect(() => {
-    console.log("Starting listener");
-    if (!user?.id) {
-      setIsLoading(false);
-      setError('User not authenticated');
-      return;
-    }
-
-    let unsubscribe: Unsubscribe | null = null;
-
-    const setupListener = async () => {
-      try {
-        setIsLoading(true);
-        setError(null);
-
-        // Bypassing strict Firebase check as we're using the Supabase shim
-        const { isFirebaseDemoMode } = await import('../../utils/firebase/config');
-
-        if (isFirebaseDemoMode) {
-          console.warn('⚠️ MyStock: Running in Demo Mode');
-          setIsLoading(false);
-          setMyStock([]);
-          return;
-        }
-
-        console.log('🔵 Setting up MyStock listener for user:', user.id);
-
-        // Listen to stock items where sellerId matches current user OR supplierId (legacy) matches
-        // Using 'or' allows fetching old items that haven't been migrated yet
-        unsubscribe = listenToCollection(
-          'stock_items',
-          [
-            // Updated to use gst_number to match Supabase schema and AddStockWizard logic
-            where('gst_number', '==', user.id)
-          ],
-          (data) => {
-            // Sort client side (newest first)
-            if (Array.isArray(data)) {
-              data.sort((a, b) => {
-                // Supabase uses created_at (string or timestamp)
-                const tA = a.created_at ? new Date(a.created_at).getTime() : 0;
-                const tB = b.created_at ? new Date(b.created_at).getTime() : 0;
-                return tB - tA;
-              });
-            }
-
-            console.log('✅ MyStock update received:', data?.length || 0, 'items for user', user.id, 'status:', statusFilter);
-
-            // Ensure data is always an array and filter out any invalid items
-            const safeData = Array.isArray(data)
-              ? data.filter(item => item && typeof item === 'object' && item.id)
-              : [];
-
-            // Log each item for debugging
-            if (safeData.length > 0) {
-              console.log('📦 Stock items:', safeData.map(item => ({
-                id: item.id,
-                name: item.name,
-                quantity: item.quantity,
-                price: item.price,
-                hasQuantity: typeof item.quantity === 'number',
-                hasPrice: typeof item.price === 'number'
-              })));
-            }
-
-            setMyStock(safeData);
-            setIsLoading(false);
-            setError(null);
-          }
-        );
-      } catch (err: any) {
-        console.error('❌ Error setting up MyStock listener:', err);
-        setError(err.message || 'Failed to load your stock');
-        setIsLoading(false);
-      }
-    };
-
-    setupListener();
-
-    // Cleanup listener on unmount or user change
-    return () => {
-      if (unsubscribe) {
-        console.log('Stopping listener');
-        unsubscribe();
-      }
-    };
-  }, [user, statusFilter]);
 
   // Extract unique categories for filter
   const categories = useMemo(() => {
